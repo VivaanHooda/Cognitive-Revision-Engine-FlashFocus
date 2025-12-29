@@ -1,0 +1,7 @@
+{
+  "name": "FlashFocus",
+  "description": "A minimal, distraction-free flashcard application for students with AI-powered deck generation.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
