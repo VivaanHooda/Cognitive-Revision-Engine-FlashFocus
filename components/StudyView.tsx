@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import React, { useState, useEffect, useRef } from "react";
 import { Deck, FlashcardData, StudyGrade } from "@/lib/types";
@@ -18,21 +18,19 @@ import {
   ChatMessage,
   evaluateAnswer,
   GradingResult,
-} from "@/lib/geminiService";
+} from "@/lib/gemini.client";
 import { calculateNextReview } from "@/lib/srs";
 
 interface StudyViewProps {
   deck: Deck;
   onExit: () => void;
   onUpdateDeck: (updatedDeck: Deck) => void;
-  apiKey: string;
 }
 
 export const StudyView: React.FC<StudyViewProps> = ({
   deck,
   onExit,
   onUpdateDeck,
-  apiKey,
 }) => {
   // Advanced Queue Logic: Initial filter of Due and New cards
   const [queue, setQueue] = useState<FlashcardData[]>(() => {
@@ -123,9 +121,9 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
   const handleFlip = () => {
     setIsFlipped(true);
-    if (userAnswer.trim() && apiKey) {
+    if (userAnswer.trim()) {
       setIsGrading(true);
-      evaluateAnswer(apiKey, currentCard.front, currentCard.back, userAnswer)
+      evaluateAnswer(currentCard.front, currentCard.back, userAnswer)
         .then(setGradingResult)
         .catch((err) => console.error("Grading failed", err))
         .finally(() => setIsGrading(false));
@@ -166,14 +164,13 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
   const handleChatSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!chatInput.trim() || !apiKey) return;
+    if (!chatInput.trim()) return;
     const userMsg = chatInput;
     setChatInput("");
     setChatHistory((prev) => [...prev, { role: "user", text: userMsg }]);
     setIsChatLoading(true);
     try {
       const response = await askCardClarification(
-        apiKey,
         userMsg,
         currentCard.front,
         currentCard.back,
@@ -185,7 +182,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
         ...prev,
         {
           role: "model",
-          text: "Sorry, I couldn't connect to the tutor. Please check your API key.",
+          text: "Sorry, I couldn't connect to the tutor. Please try again later.",
         },
       ]);
     } finally {
@@ -501,15 +498,13 @@ export const StudyView: React.FC<StudyViewProps> = ({
                     type="text"
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
-                    placeholder={
-                      apiKey ? "Ask a question..." : "Enter API key in library"
-                    }
-                    disabled={!apiKey || isChatLoading}
+                    placeholder="Ask a question..."
+                    disabled={isChatLoading}
                     className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                   />
                   <button
                     type="submit"
-                    disabled={!apiKey || isChatLoading || !chatInput.trim()}
+                    disabled={isChatLoading || !chatInput.trim()}
                     className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     <Send size={16} />
