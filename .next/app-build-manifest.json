@@ -1,10 +1,5 @@
 {
   "pages": {
-    "/api/gemini/curriculum/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/gemini/curriculum/route.js"
-    ],
     "/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -16,30 +11,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/page.js"
     ],
-    "/api/gemini/deck/route": [
+    "/api/auth/logout/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/gemini/deck/route.js"
-    ],
-    "/api/gemini/evaluate/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/gemini/evaluate/route.js"
-    ],
-    "/api/gemini/clarify/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/gemini/clarify/route.js"
-    ],
-    "/api/srs/simulate/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/srs/simulate/route.js"
-    ],
-    "/api/srs/calculate/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/srs/calculate/route.js"
+      "static/chunks/app/api/auth/logout/route.js"
     ]
   }
 }

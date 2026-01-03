@@ -13,6 +13,8 @@ export interface GradingResult {
   feedback: string;
 }
 
+import { supabase } from "./supabase.client";
+
 // Client wrappers that call server API routes. Signatures kept compatible with previous code.
 async function parseJsonOrText(res: Response) {
   const text = await res.text();
@@ -27,12 +29,29 @@ async function parseJsonOrText(res: Response) {
   }
 }
 
+async function getAuthHeader(): Promise<Record<string, string>> {
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch (e) {
+    return {};
+  }
+}
+
 export const generateCurriculum = async (
   topic: string
 ): Promise<SubtopicSuggestion[]> => {
+  const authHeader = await getAuthHeader();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...authHeader,
+  };
   const res = await fetch("/api/gemini/curriculum", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: headers as HeadersInit,
     body: JSON.stringify({ topic }),
   });
   const data = await parseJsonOrText(res);
@@ -46,9 +65,14 @@ export const generateDeckFromTopic = async (
   title: string;
   cards: Array<{ front: string; back: string }>;
 }> => {
+  const authHeader = await getAuthHeader();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...authHeader,
+  };
   const res = await fetch("/api/gemini/deck", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: headers as HeadersInit,
     body: JSON.stringify({ subtopic, parentTopic }),
   });
   const data = await parseJsonOrText(res);
@@ -61,9 +85,14 @@ export const askCardClarification = async (
   cardBack: string,
   history: ChatMessage[] = []
 ): Promise<string> => {
+  const authHeader = await getAuthHeader();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...authHeader,
+  };
   const res = await fetch("/api/gemini/clarify", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: headers as HeadersInit,
     body: JSON.stringify({ question, cardFront, cardBack, history }),
   });
   const data = await parseJsonOrText(res);
@@ -75,9 +104,14 @@ export const evaluateAnswer = async (
   correctAnswer: string,
   userAnswer: string
 ): Promise<GradingResult> => {
+  const authHeader = await getAuthHeader();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...authHeader,
+  };
   const res = await fetch("/api/gemini/evaluate", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: headers as HeadersInit,
     body: JSON.stringify({ question, correctAnswer, userAnswer }),
   });
   const data = await parseJsonOrText(res);

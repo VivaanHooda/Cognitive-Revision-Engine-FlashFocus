@@ -8,7 +8,7 @@ import { Statistics } from "@/components/Statistics";
 import { Timeline } from "@/components/Timeline";
 import { Auth } from "@/components/Auth";
 import { db } from "@/lib/db";
-import { authService } from "@/lib/authService";
+import * as authClient from "@/lib/auth.client";
 import {
   LayoutGrid,
   BarChart2,
@@ -25,15 +25,18 @@ export default function Home() {
   const [activeDeckId, setActiveDeckId] = useState<string | null>(null);
   const [isDataLoading, setIsDataLoading] = useState(false);
 
-  // Check for existing JWT session on mount
+  // Check for existing JWT session on mount (server-backed)
   useEffect(() => {
-    const user = authService.getCurrentUser();
-    if (user) {
-      setCurrentUser(user);
-      setView(AppView.HOME);
-    } else {
-      setView(AppView.AUTH);
-    }
+    const init = async () => {
+      const user = await authClient.me();
+      if (user) {
+        setCurrentUser(user);
+        setView(AppView.HOME);
+      } else {
+        setView(AppView.AUTH);
+      }
+    };
+    init();
   }, []);
 
   // Fetch data when user changes
@@ -62,8 +65,8 @@ export default function Home() {
     setView(AppView.HOME);
   };
 
-  const handleLogout = () => {
-    authService.logout();
+  const handleLogout = async () => {
+    await authClient.logout();
     setCurrentUser(null);
     setView(AppView.AUTH);
     setActiveDeckId(null);
@@ -172,17 +175,20 @@ export default function Home() {
               <div className="h-8 w-px bg-gray-200 mx-2 hidden sm:block"></div>
 
               <div className="flex items-center gap-3 ml-2">
-                <div className="hidden lg:flex flex-col items-end">
+                {/* <div className="hidden lg:flex flex-col items-end">
                   <span className="text-xs font-bold text-gray-900">
                     {currentUser?.name}
                   </span>
                   <span className="text-[10px] text-gray-400 font-medium">
                     {currentUser?.email}
                   </span>
-                </div>
+                </div> */}
                 <div className="p-2 bg-indigo-50 text-indigo-600 rounded-full border border-indigo-100">
                   <UserIcon size={18} />
                 </div>
+                <span className="hidden sm:inline ml-2 text-sm font-semibold text-gray-900">
+                  {currentUser?.name || currentUser?.email}
+                </span>
                 <button
                   onClick={handleLogout}
                   className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
