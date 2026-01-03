@@ -1,4 +1,3 @@
-
 export interface User {
   id: string;
   email: string;
@@ -9,7 +8,7 @@ export interface FlashcardData {
   id: string;
   front: string;
   back: string;
-  status: 'new' | 'learning' | 'review' | 'mastered';
+  status: "new" | "learning" | "review" | "mastered";
   easeFactor: number;
   interval: number; // in days
   reviewCount: number;
@@ -27,7 +26,7 @@ export interface Deck {
   userId: string; // Owner of the deck
 }
 
-export type StudyGrade = 'again' | 'hard' | 'good' | 'easy';
+export type StudyGrade = "again" | "hard" | "good" | "easy";
 
 export interface StudySessionState {
   isActive: boolean;
@@ -39,8 +38,9 @@ export interface StudySessionState {
 }
 
 export enum AppView {
-  AUTH = 'AUTH',
-  HOME = 'HOME',
-  STUDY = 'STUDY',
-  STATS = 'STATS',
+  AUTH = "AUTH",
+  HOME = "HOME",
+  STUDY = "STUDY",
+  STATS = "STATS",
+  TIMELINE = "TIMELINE",
 }

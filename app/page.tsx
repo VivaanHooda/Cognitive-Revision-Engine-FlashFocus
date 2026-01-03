@@ -5,6 +5,7 @@ import { AppView, Deck, User } from "@/lib/types";
 import { DeckList } from "@/components/DeckList";
 import { StudyView } from "@/components/StudyView";
 import { Statistics } from "@/components/Statistics";
+import { Timeline } from "@/components/Timeline";
 import { Auth } from "@/components/Auth";
 import { db } from "@/lib/db";
 import { authService } from "@/lib/authService";
@@ -14,6 +15,7 @@ import {
   Loader2,
   LogOut,
   User as UserIcon,
+  Calendar as CalendarIcon,
 } from "lucide-react";
 
 export default function Home() {
@@ -143,6 +145,18 @@ export default function Home() {
                   <span className="hidden md:inline">Library</span>
                 </button>
                 <button
+                  onClick={() => setView(AppView.TIMELINE)}
+                  className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-2 text-sm font-semibold ${
+                    view === AppView.TIMELINE
+                      ? "bg-white text-indigo-600 shadow-sm"
+                      : "text-gray-500 hover:text-gray-900"
+                  }`}
+                >
+                  <CalendarIcon size={18} />
+                  <span className="hidden md:inline">Timeline</span>
+                </button>
+
+                <button
                   onClick={() => setView(AppView.STATS)}
                   className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-2 text-sm font-semibold ${
                     view === AppView.STATS
@@ -209,6 +223,8 @@ export default function Home() {
                 onUpdateDeck={handleUpdateDeck}
               />
             )}
+
+            {view === AppView.TIMELINE && <Timeline decks={decks} />}
 
             {view === AppView.STATS && <Statistics decks={decks} />}
           </>

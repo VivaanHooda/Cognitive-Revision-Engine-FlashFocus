@@ -19,7 +19,7 @@ import {
   evaluateAnswer,
   GradingResult,
 } from "@/lib/gemini.client";
-import { calculateNextReview } from "@/lib/srs";
+import { calculateNextReview, simulateNextReviews } from "@/lib/srs.client";
 
 interface StudyViewProps {
   deck: Deck;
@@ -69,6 +69,26 @@ export const StudyView: React.FC<StudyViewProps> = ({
   const isFinished = !currentCard;
 
   const [sessionStats, setSessionStats] = useState({ new: 0, review: 0 });
+
+  // Prefetch simulated intervals for the current card from the server
+  const [simulatedIntervals, setSimulatedIntervals] = useState<Record<
+    StudyGrade,
+    string
+  > | null>(null);
+  useEffect(() => {
+    let mounted = true;
+    if (!currentCard) return;
+    simulateNextReviews(currentCard)
+      .then((res) => {
+        if (mounted) setSimulatedIntervals(res);
+      })
+      .catch(() => {
+        if (mounted) setSimulatedIntervals(null);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [currentCard?.id]);
 
   useEffect(() => {
     if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
@@ -133,33 +153,38 @@ export const StudyView: React.FC<StudyViewProps> = ({
   /**
    * CORE SRS FEATURE: Re-queue failed cards (Again) in the current session.
    */
-  const handleGrade = (grade: StudyGrade) => {
+  const handleGrade = async (grade: StudyGrade) => {
     setSessionStats((prev) => ({
       ...prev,
       new: currentCard.status === "new" ? prev.new + 1 : prev.new,
       review: currentCard.status !== "new" ? prev.review + 1 : prev.review,
     }));
 
-    const updatedStats = calculateNextReview(currentCard, grade);
-    const updatedCard = { ...currentCard, ...updatedStats };
+    try {
+      const updatedStats = await calculateNextReview(currentCard, grade);
+      const updatedCard = { ...currentCard, ...updatedStats };
 
-    // Persistent storage update
-    const newCards = deck.cards.map((c) =>
-      c.id === updatedCard.id ? updatedCard : c
-    );
-    onUpdateDeck({ ...deck, cards: newCards });
+      // Persistent storage update
+      const newCards = deck.cards.map((c) =>
+        c.id === updatedCard.id ? updatedCard : c
+      );
+      onUpdateDeck({ ...deck, cards: newCards });
 
-    // In-session queue manipulation
-    if (grade === "again") {
-      // If the student fails, add the card back to the queue (Anki "Learning Step")
-      // We add it to the end of the current queue.
-      setQueue((prev) => [...prev, updatedCard]);
+      // In-session queue manipulation
+      if (grade === "again") {
+        // If the student fails, add the card back to the queue (Anki "Learning Step")
+        // We add it to the end of the current queue.
+        setQueue((prev) => [...prev, updatedCard]);
+      }
+    } catch (err) {
+      console.error("SRS update failed", err);
+    } finally {
+      setIsFlipped(false);
+      setTimeout(() => {
+        // so that card flips first before it loads the next question
+        setCurrentIndex((prev) => prev + 1);
+      }, 500);
     }
-    setIsFlipped(false);
-    setTimeout(() => {
-      // so that card flips first before it loads the next question
-      setCurrentIndex((prev) => prev + 1);
-    }, 500);
   };
 
   const handleChatSubmit = async (e?: React.FormEvent) => {
@@ -279,10 +304,21 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
   const progress = (currentIndex / queue.length) * 100;
   const getSimulatedInterval = (grade: StudyGrade) => {
-    const result = calculateNextReview(currentCard, grade);
-    const d = result.interval || 0;
+    // Prefer server-provided simulated intervals (fetched on card change)
+    if (simulatedIntervals && simulatedIntervals[grade])
+      return simulatedIntervals[grade];
+
+    // Fallback: small local calculation for instant UI feedback
+    const interval = currentCard.interval || 0;
     if (grade === "again") return "< 1d";
-    return d === 0 ? "< 1d" : `${d}d`;
+    if (grade === "hard") return `${Math.max(1, Math.ceil(interval * 1.2))}d`;
+    if (grade === "good")
+      return `${
+        interval === 0 ? 1 : interval === 1 ? 6 : Math.ceil(interval * 2.5)
+      }d`;
+    if (grade === "easy")
+      return `${interval === 0 ? 4 : Math.ceil(interval * 2.5 * 1.3)}d`;
+    return "< 1d";
   };
 
   return (

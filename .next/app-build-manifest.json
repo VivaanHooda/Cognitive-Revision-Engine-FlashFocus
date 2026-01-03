@@ -30,6 +30,16 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/gemini/clarify/route.js"
+    ],
+    "/api/srs/simulate/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/srs/simulate/route.js"
+    ],
+    "/api/srs/calculate/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/srs/calculate/route.js"
     ]
   }
 }

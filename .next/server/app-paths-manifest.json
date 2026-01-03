@@ -1,6 +1,6 @@
 {
-  "/api/gemini/deck/route": "app/api/gemini/deck/route.js",
+  "/api/srs/simulate/route": "app/api/srs/simulate/route.js",
   "/api/gemini/evaluate/route": "app/api/gemini/evaluate/route.js",
-  "/api/gemini/clarify/route": "app/api/gemini/clarify/route.js",
+  "/api/srs/calculate/route": "app/api/srs/calculate/route.js",
   "/page": "app/page.js"
 }
