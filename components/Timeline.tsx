@@ -7,6 +7,7 @@ type CardWithMeta = FlashcardData & { deckTitle: string; deckId: string };
 import {
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   Calendar as CalendarIcon,
 } from "lucide-react";
 
@@ -36,6 +37,11 @@ export const Timeline: React.FC<TimelineProps> = ({ decks }) => {
   // Build a sliding window of days (2 days past -> 14 days future by default)
   const [startOffset, setStartOffset] = useState(-2);
   const dayRange = 16; // -2..13 => shows 16 days
+
+  // Track per-deck expanded state (key: `${dayKey}-${deckId}`)
+  const [expandedDecks, setExpandedDecks] = useState<Record<string, boolean>>(
+    {}
+  );
 
   const days = useMemo(() => {
     const now = new Date();
@@ -93,7 +99,40 @@ export const Timeline: React.FC<TimelineProps> = ({ decks }) => {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {days.map((day) => {
-          const cards = grouped[day.key] || [];
+          const dayCards = (grouped[day.key] || []) as CardWithMeta[];
+          const deckGroups = dayCards.reduce<Record<string, CardWithMeta[]>>(
+            (acc, c) => {
+              if (!acc[c.deckId]) acc[c.deckId] = [];
+              acc[c.deckId].push(c);
+              return acc;
+            },
+            {}
+          );
+
+          const totalCards = Object.values(deckGroups).reduce(
+            (s, a) => s + a.length,
+            0
+          );
+
+          // No per-day limit: every deck starts collapsed and shows no cards until expanded.
+
+          // Build a list of deck entries to render (always include decks so users can expand them even if none are visible initially)
+          const decksToRender = Object.entries(deckGroups).map(
+            ([deckId, cards]) => {
+              const deckKey = `${day.key}-${deckId}`;
+              const isDeckExpanded = !!expandedDecks[deckKey];
+              const visibleCards = isDeckExpanded ? cards : [];
+              return {
+                deckId,
+                deckTitle: cards[0]?.deckTitle || "Unknown",
+                fullCount: cards.length,
+                visibleCards,
+                isDeckExpanded,
+                deckKey,
+              };
+            }
+          );
+
           return (
             <div
               key={day.key}
@@ -106,30 +145,63 @@ export const Timeline: React.FC<TimelineProps> = ({ decks }) => {
                   </div>
                 </div>
                 <div className="text-sm font-bold text-gray-700">
-                  {cards.length}
+                  {totalCards}
                 </div>
               </div>
 
-              {cards.length === 0 ? (
+              {totalCards === 0 ? (
                 <div className="text-xs text-gray-400">
                   No reviews scheduled
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
-                  {cards.map((c) => (
-                    <div
-                      key={c.id}
-                      className="p-3 rounded-lg border border-gray-100 bg-gray-50"
-                    >
-                      <div className="text-sm font-semibold text-gray-800 truncate">
-                        {c.front}
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1 flex items-center justify-between">
-                        <span className="truncate">{c.deckTitle}</span>
-                        <span className="ml-2">{c.status}</span>
+                  {decksToRender.map((d) => (
+                    <div key={d.deckId}>
+                      <button
+                        onClick={() =>
+                          setExpandedDecks((prev) => ({
+                            ...prev,
+                            [d.deckKey]: !prev[d.deckKey],
+                          }))
+                        }
+                        className="w-full text-xs font-medium text-gray-500 mb-2 flex items-center justify-between group hover:bg-gray-50 p-2 rounded-md"
+                        aria-expanded={d.isDeckExpanded}
+                      >
+                        <span className="flex items-center gap-2">
+                          {d.isDeckExpanded ? (
+                            <ChevronDown size={14} />
+                          ) : (
+                            <ChevronRight size={14} />
+                          )}
+                          <span className="font-medium text-gray-700">
+                            {d.deckTitle}
+                          </span>
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          {d.fullCount}
+                        </span>
+                      </button>
+
+                      <div className="flex flex-col gap-2">
+                        {d.visibleCards.map((c) => (
+                          <div
+                            key={c.id}
+                            className="p-3 rounded-lg border border-gray-100 bg-gray-50"
+                          >
+                            <div className="text-sm font-semibold text-gray-800 truncate">
+                              {c.front}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1 flex items-center justify-between">
+                              <span className="truncate">{c.deckTitle}</span>
+                              <span className="ml-2">{c.status}</span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ))}
+
+                  {/* Note: day-level expand/collapse removed; per-deck expand is available instead */}
                 </div>
               )}
             </div>

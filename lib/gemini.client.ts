@@ -42,7 +42,10 @@ export const generateCurriculum = async (
 export const generateDeckFromTopic = async (
   subtopic: string,
   parentTopic: string
-) => {
+): Promise<{
+  title: string;
+  cards: Array<{ front: string; back: string }>;
+}> => {
   const res = await fetch("/api/gemini/deck", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
