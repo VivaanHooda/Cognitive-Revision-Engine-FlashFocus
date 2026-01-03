@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { askCardClarification } from "@/lib/gemini.server";
+import { getUserFromRequest } from "@/lib/auth.server";
 
 export async function POST(req: Request) {
   try {
+    const user = await getUserFromRequest(req);
+    if (!user)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
     const { question, cardFront, cardBack, history } = await req.json();
     if (!question || !cardFront || !cardBack)
       return NextResponse.json(
