@@ -30,13 +30,14 @@ export async function PUT(req: Request) {
   if (!params)
     return NextResponse.json({ error: "params required" }, { status: 400 });
 
-  // upsert
+  // upsert (use onConflict to avoid duplicate rows)
   const { data, error } = await supabaseAdmin
     .from("srs_params")
-    .upsert({ user_id: user.id, params })
-    .select();
+    .upsert({ user_id: user.id, params }, { onConflict: "user_id" })
+    .select()
+    .single();
   if (error)
     return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json(data?.[0] ?? null);
+  return NextResponse.json(data ?? null);
 }
