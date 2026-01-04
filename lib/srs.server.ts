@@ -10,7 +10,7 @@ const DECAY = -0.5;
 const EPS = 1e-6;
 const MAX_STABILITY = 100.0;
 
-const params = {
+export const DEFAULT_FSRS_PARAMS = {
   w0: 0.4,
   w1: 0.6,
   w2: 0.9,
@@ -24,6 +24,10 @@ const params = {
   init_s_easy: 4.0,
 };
 
+function mergeParams(override?: Partial<typeof DEFAULT_FSRS_PARAMS>) {
+  return { ...DEFAULT_FSRS_PARAMS, ...(override || {}) };
+}
+
 function clamp(x: number, min: number, max: number) {
   return Math.min(Math.max(x, min), max);
 }
@@ -32,33 +36,43 @@ function retrievability(elapsedDays: number, stability: number) {
   return Math.exp((elapsedDays * DECAY) / Math.max(stability, EPS));
 }
 
-function initialStability(gradeNum: number) {
-  if (gradeNum === 1) return params.init_s_again;
-  if (gradeNum === 2) return params.init_s_hard;
-  if (gradeNum === 3) return params.init_s_good;
-  return params.init_s_easy;
+function initialStability(gradeNum: number, p: typeof DEFAULT_FSRS_PARAMS) {
+  if (gradeNum === 1) return p.init_s_again;
+  if (gradeNum === 2) return p.init_s_hard;
+  if (gradeNum === 3) return p.init_s_good;
+  return p.init_s_easy;
 }
 
-function updateDifficulty(D: number, gradeNum: number) {
+function updateDifficulty(
+  D: number,
+  gradeNum: number,
+  p: typeof DEFAULT_FSRS_PARAMS
+) {
   // Easier grades should reduce difficulty; harder grades should increase it.
-  const D_new = D + params.w0 * (3 - gradeNum) + params.w1 * (5 - D);
+  const D_new = D + p.w0 * (3 - gradeNum) + p.w1 * (5 - D);
   return clamp(D_new, 1.0, 10.0);
 }
 
-function stabilityFail(S: number, D: number, R: number) {
-  return clamp(
-    S * params.w1 * Math.pow(D, params.w2) * Math.pow(R, params.w3),
-    EPS,
-    S
-  );
+function stabilityFail(
+  S: number,
+  D: number,
+  R: number,
+  p: typeof DEFAULT_FSRS_PARAMS
+) {
+  return clamp(S * p.w1 * Math.pow(D, p.w2) * Math.pow(R, p.w3), EPS, S);
 }
 
-function stabilitySuccess(S: number, D: number, R: number) {
+function stabilitySuccess(
+  S: number,
+  D: number,
+  R: number,
+  p: typeof DEFAULT_FSRS_PARAMS
+) {
   const growth =
-    Math.exp(params.w4) *
+    Math.exp(p.w4) *
     (11 - D) *
-    Math.pow(S, params.w5) *
-    (Math.exp((1 - R) * params.w6) - 1);
+    Math.pow(S, p.w5) *
+    (Math.exp((1 - R) * p.w6) - 1);
   return clamp(S * (1 + growth), EPS, MAX_STABILITY);
 }
 
@@ -83,10 +97,12 @@ function gradeToNum(grade: StudyGrade) {
 
 export const calculateNextReview = (
   card: FlashcardData,
-  grade: StudyGrade
+  grade: StudyGrade,
+  overrideParams?: Partial<typeof DEFAULT_FSRS_PARAMS>
 ): Partial<FlashcardData> => {
   const now = Date.now();
   const gradeNum = gradeToNum(grade);
+  const p = mergeParams(overrideParams);
 
   // Read existing values or defaults
   let S = typeof card.stability === "number" ? card.stability : undefined;
@@ -98,7 +114,7 @@ export const calculateNextReview = (
 
   if (isNew) {
     // initialize stability based on initial rating
-    S = initialStability(gradeNum);
+    S = initialStability(gradeNum, p);
 
     // "Again" on a new card: learning, immediate retry
     if (grade === "again") {
@@ -143,14 +159,14 @@ export const calculateNextReview = (
   const R = retrievability(elapsedDays, S!);
 
   // Update difficulty
-  const D_new = updateDifficulty(D, gradeNum);
+  const D_new = updateDifficulty(D, gradeNum, p);
 
   // Update stability
   let S_new: number;
   if (grade === "again") {
-    S_new = stabilityFail(S!, D_new, R);
+    S_new = stabilityFail(S!, D_new, R, p);
   } else {
-    S_new = stabilitySuccess(S!, D_new, R);
+    S_new = stabilitySuccess(S!, D_new, R, p);
   }
 
   // Determine interval

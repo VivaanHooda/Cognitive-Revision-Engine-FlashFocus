@@ -3,24 +3,27 @@
 ## ✅ What Was Changed
 
 ### 1. **Project Structure**
+
 - **Before (Vite)**: Flat structure with `src/` folder
 - **After (Next.js)**: App Router structure with `app/`, `components/`, and `lib/` folders
 
 ### 2. **Configuration Files**
 
 #### Replaced:
+
 - ❌ `vite.config.ts` → ✅ `next.config.js`
 - ❌ Old `tsconfig.json` → ✅ Next.js-compatible `tsconfig.json`
 - ✅ Added `tailwind.config.ts` (standard Tailwind v3)
 - ✅ Added `postcss.config.js`
 
 #### Updated package.json:
+
 ```json
 {
   "scripts": {
-    "dev": "next dev",        // was: "vite"
-    "build": "next build",    // was: "vite build"
-    "start": "next start",    // was: "vite preview"
+    "dev": "next dev", // was: "vite"
+    "build": "next build", // was: "vite build"
+    "start": "next start" // was: "vite preview"
   }
 }
 ```
@@ -28,12 +31,14 @@
 ### 3. **Dependencies**
 
 #### Removed:
+
 - `@tailwindcss/vite` (v4)
 - `@vitejs/plugin-react`
 - `vite`
 - `dotenv` (Next.js handles env vars)
 
 #### Added:
+
 - `next` (^15.1.0)
 - `autoprefixer`
 - `postcss`
@@ -41,41 +46,45 @@
 - Tailwind CSS v3 (instead of v4)
 
 #### Kept:
+
 - All other dependencies (React, lucide-react, recharts, uuid, etc.)
 
 ### 4. **File Locations**
 
-| Original (Vite) | New (Next.js) |
-|----------------|---------------|
-| `types.ts` | `lib/types.ts` |
-| `services/*.ts` | `lib/*.ts` |
+| Original (Vite)    | New (Next.js)                  |
+| ------------------ | ------------------------------ |
+| `types.ts`         | `lib/types.ts`                 |
+| `services/*.ts`    | `lib/*.ts`                     |
 | `components/*.tsx` | `components/*.tsx` (no change) |
-| `index.tsx` | `app/page.tsx` |
-| `App.tsx` | Merged into `app/page.tsx` |
-| `index.html` | Handled by Next.js |
-| `index.css` | `app/globals.css` |
+| `index.tsx`        | `app/page.tsx`                 |
+| `App.tsx`          | Merged into `app/page.tsx`     |
+| `index.html`       | Handled by Next.js             |
+| `index.css`        | `app/globals.css`              |
 
 ### 5. **Component Changes**
 
 All components now have:
+
 ```tsx
-'use client';  // Added at the top of every component
+"use client"; // Added at the top of every component
 ```
 
 Import paths updated from relative to absolute:
+
 ```tsx
 // Before:
-import { db } from '../services/db';
-import { User } from '../types';
+import { db } from "../services/db";
+import { User } from "../types";
 
 // After:
-import { db } from '@/lib/db';
-import { User } from '@/lib/types';
+import { db } from "@/lib/db";
+import { User } from "@/lib/types";
 ```
 
 ### 6. **Styling**
 
 #### globals.css changes:
+
 ```css
 /* Before (Tailwind v4): */
 @import "tailwindcss";
@@ -88,8 +97,9 @@ import { User } from '@/lib/types';
 ### 7. **Entry Point**
 
 **Before**: `index.tsx` with ReactDOM.createRoot
+
 ```tsx
-ReactDOM.createRoot(document.getElementById('root')!).render(
+ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
@@ -97,24 +107,22 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 ```
 
 **After**: `app/page.tsx` as a Next.js page
+
 ```tsx
 export default function Home() {
   // App logic moved here
-  return <div>...</div>
+  return <div>...</div>;
 }
 ```
 
 ## 🔧 Technical Details
 
 ### Client-Side Rendering
-Since this app uses:
-- localStorage for data persistence
-- Browser APIs (SpeechRecognition)
-- Dynamic user state
 
-All components are marked with `'use client'` to ensure client-side rendering.
+Since this app uses browser-only APIs (SpeechRecognition) and dynamic user state, many components are still client components and marked with `'use client'`. Data persistence has been migrated to Supabase (server-side Postgres), and the app now uses server-backed APIs for decks, cards, and user SRS params.
 
 ### App Router Structure
+
 ```
 app/
 ├── layout.tsx      # Root layout with metadata, fonts
@@ -123,7 +131,9 @@ app/
 ```
 
 ### Path Aliases
+
 TypeScript paths configured as `@/*` mapping to root:
+
 ```json
 {
   "paths": {
@@ -133,18 +143,22 @@ TypeScript paths configured as `@/*` mapping to root:
 ```
 
 This allows cleaner imports:
+
 - `@/lib/types` instead of `../types`
 - `@/components/Auth` instead of `./components/Auth`
 
 ## 🚀 Running the App
 
 ### Development:
+
 ```bash
 npm run dev
 ```
+
 Open http://localhost:3000
 
 ### Production Build:
+
 ```bash
 npm run build
 npm start
@@ -152,9 +166,9 @@ npm start
 
 ## ⚠️ Important Notes
 
-1. **No Server-Side Features**: App uses localStorage and browser APIs, so everything must run client-side
+1. **Server-Side Features**: Data persistence now uses Supabase Postgres with RLS and server APIs for safe access.
 
-2. **API Keys**: Stored in browser localStorage (not in env variables)
+2. **API Keys**: Keep API keys and service role keys in `.env.local` for local development or in your deployment environment (never commit secrets).
 
 3. **No index.html**: Next.js generates HTML automatically
 
@@ -162,7 +176,7 @@ npm start
 
 5. **File Deletion**: Original Vite files can be safely deleted:
    - `index.tsx`
-   - `index.html`  
+   - `index.html`
    - `vite.config.ts`
    - Old `tsconfig.json` (replaced)
 
@@ -182,7 +196,7 @@ npm start
 - All UI components (unchanged logic)
 - All business logic (SRS algorithm, AI services)
 - All styling and design
-- localStorage-based data persistence
+
 - User authentication flow
 - AI integrations with Gemini
 

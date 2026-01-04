@@ -30,10 +30,19 @@ export async function POST(req: Request) {
     };
 
     for (const g of GRADES) {
-      const r = calculateNextReview(card, g as any);
+      const { data: paramsRow } = await (
+        await import("@/lib/supabase.server")
+      ).supabaseAdmin
+        .from("srs_params")
+        .select("params")
+        .eq("user_id", user?.id || null)
+        .single()
+        .maybeSingle();
+      const params = paramsRow?.params;
+
+      const r = calculateNextReview(card, g as any, params);
       const stability = (r as any).stability as number | undefined;
       const difficulty = (r as any).difficulty as number | undefined;
-
       if (g === "again") {
         out[g] = { days: 0, label: "< 1d", stability, difficulty };
         continue;

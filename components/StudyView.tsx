@@ -166,10 +166,22 @@ export const StudyView: React.FC<StudyViewProps> = ({
     }));
 
     try {
+      // Fetch updated stats using server-side FSRS with user params
       const updatedStats = await calculateNextReview(currentCard, grade);
       const updatedCard = { ...currentCard, ...updatedStats };
 
-      // Persistent storage update
+      // Persist updated card to card-level table
+      try {
+        await fetch("/api/cards", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updatedCard),
+        });
+      } catch (e) {
+        console.error("Failed to persist card update", e);
+      }
+
+      // Keep deck.cards in sync for UI rendering (optimistic)
       const newCards = deck.cards.map((c) =>
         c.id === updatedCard.id ? updatedCard : c
       );

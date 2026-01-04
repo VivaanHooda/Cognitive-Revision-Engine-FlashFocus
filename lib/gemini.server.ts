@@ -19,7 +19,7 @@ export const generateCurriculum = async (
 ): Promise<SubtopicSuggestion[]> => {
   const ai = getAI();
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-2.5-flash-lite",
     contents: `You are an expert curriculum designer. Break down the topic "${topic}" into 4-6 logical, ordered subtopics for a student. Start from fundamentals and move to more advanced concepts. Return a JSON list of subtopics, each with a title and a brief 1-sentence description.`,
     config: {
       responseMimeType: "application/json",
@@ -57,7 +57,7 @@ export const generateDeckFromTopic = async (
   const prompt = `Create a high-quality "Atomic" flashcard deck for the subtopic: "${subtopic}". Context: This is part of a course on "${parentTopic}".\n\nSRS DESIGN PRINCIPLES (MUST FOLLOW):\n1. ATOMICITY: Each card must test exactly ONE discrete fact or concept. Do not include lists or multiple steps on one card.\n2. CLARITY: The \"Front\" should be a precise trigger (Question, Definition, or Fill-in-the-blank).\n3. BREVITY: The \"Back\" should be a short, \"punchy\" answer that can be verified in < 2 seconds.\n4. ACTIVE RECALL: Avoid \"True/False\" or \"Multiple Choice\" styles. Use \"What is...\", \"How does...\", \"Define...\".\n\nGenerate 6-10 cards. Return a JSON object with a specific title for this deck and the list of cards.`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-2.5-flash-lite",
     contents: prompt,
     config: {
       responseMimeType: "application/json",
@@ -111,7 +111,7 @@ export const askCardClarification = async (
   const fullPrompt = `${systemContext}\n\n${promptHistory}Student: ${question}\nTutor:`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-2.5-flash-lite",
     contents: fullPrompt,
   });
 
@@ -134,7 +134,7 @@ export const evaluateAnswer = async (
   const prompt = `You are a strict but fair flashcard grader. Question: "${question}" Correct Answer: "${correctAnswer}" Student Answer: "${userAnswer}"\n\nRate the student's answer on a scale of 1-4 and provide a brief feedback. Return JSON.`;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-2.5-flash-lite",
     contents: prompt,
     config: {
       responseMimeType: "application/json",

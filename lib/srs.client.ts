@@ -29,7 +29,23 @@ export const calculateNextReview = async (
   });
 
   if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  const result = await res.json();
+
+  // Persist the updated card if server returned id/fields
+  if (result && result.id) {
+    try {
+      await fetch("/api/cards", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify(result),
+      });
+    } catch (e) {
+      // ignore write failures (best-effort)
+      console.error("Failed to persist card update", e);
+    }
+  }
+
+  return result;
 };
 
 export type SimulationResult = {

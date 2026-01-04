@@ -127,9 +127,22 @@ export const DeckList: React.FC<DeckListProps> = ({
 
         onAddDeck(newDeck);
         setProgressLog((prev) => [...prev, `✓ Created deck: ${data.title}`]);
-      } catch (err) {
-        setProgressLog((prev) => [...prev, `✗ Failed: ${subtopic.title}`]);
+      } catch (err: any) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setProgressLog((prev) => [
+          ...prev,
+          `✗ Failed: ${subtopic.title} — ${msg}`,
+        ]);
         console.error(err);
+        // If quota exceeded, show an error and stop further generation
+        if (
+          msg.toLowerCase().includes("quota") ||
+          msg.toLowerCase().includes("quota exceeded") ||
+          msg.toLowerCase().includes("ai quota")
+        ) {
+          setError(msg);
+          break;
+        }
       }
     }
 

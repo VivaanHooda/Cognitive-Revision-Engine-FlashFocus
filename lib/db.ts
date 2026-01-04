@@ -1,58 +1,129 @@
+import { Deck } from "./types";
+import { INITIAL_DECKS } from "./mockData";
+import { supabase } from "./supabase.client";
 
-import { Deck } from './types';
-import { INITIAL_DECKS } from './mockData';
+async function safeFetch(path: string, opts: RequestInit = {}) {
+  // Attach Supabase access token if available so server can verify via Authorization header
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const token = (session as any)?.access_token;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...(opts.headers as Record<string, string> | undefined),
+    };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
 
-const DB_KEY_PREFIX = 'flashfocus-db-v1-user-';
-const DELAY_MS = 200;
+    const res = await fetch(path, { ...opts, credentials: "include", headers });
 
-const delay = <T>(data: T): Promise<T> => {
-  return new Promise(resolve => setTimeout(() => resolve(data), DELAY_MS));
-};
+    const text = await res.text();
+    try {
+      const json = JSON.parse(text);
+      if (!res.ok) throw new Error(json?.error || text || res.statusText);
+      return json;
+    } catch (e) {
+      if (!res.ok) throw new Error(text || res.statusText);
+      try {
+        return JSON.parse(text);
+      } catch {
+        return text;
+      }
+    }
+  } catch (e) {
+    // If token retrieval fails, fall back to request without Authorization
+    const res = await fetch(path, { ...opts, credentials: "include" });
+    const text = await res.text();
+    try {
+      const json = JSON.parse(text);
+      if (!res.ok) throw new Error(json?.error || text || res.statusText);
+      return json;
+    } catch (e2) {
+      if (!res.ok) throw new Error(text || res.statusText);
+      try {
+        return JSON.parse(text);
+      } catch {
+        return text;
+      }
+    }
+  }
+}
 
 export const db = {
-  getStorageKey(userId: string): string {
-    return `${DB_KEY_PREFIX}${userId}`;
+  getStorageKey(_userId: string): string {
+    // kept for compatibility with existing code
+    return `supabase-decks`;
   },
 
+  // Seed initial decks for a new user if they have none
   async init(userId: string): Promise<void> {
-    if (typeof window === 'undefined') return;
-    const key = this.getStorageKey(userId);
-    const existing = localStorage.getItem(key);
-    
-    if (!existing) {
-      // Seed with sample data for new user, but set userId correctly
-      const initial = INITIAL_DECKS.map(d => ({ ...d, userId }));
-      localStorage.setItem(key, JSON.stringify(initial));
+    if (typeof window === "undefined") return;
+    const decks = await this.getDecks(userId);
+    if (!decks || decks.length === 0) {
+      // Insert initial decks into Supabase
+      const toInsert = INITIAL_DECKS.map((d) => ({ ...d, userId }));
+      await safeFetch("/api/decks", {
+        method: "POST",
+        body: JSON.stringify(toInsert),
+      });
     }
-    return delay(undefined);
+    return;
   },
 
-  async getDecks(userId: string): Promise<Deck[]> {
-    const key = this.getStorageKey(userId);
-    const json = localStorage.getItem(key);
-    if (!json) return delay([]);
-    return delay(JSON.parse(json));
+  async getDecks(_userId: string): Promise<Deck[]> {
+    const res = await safeFetch("/api/decks");
+    // Also fetch cards for each deck and attach them (backwards compatibility)
+    const decks: Deck[] = res || [];
+    if (decks.length === 0) return decks;
+
+    try {
+      const allCards = await safeFetch("/api/cards");
+      const cardsByDeck: Record<string, any[]> = {};
+      for (const c of allCards) {
+        cardsByDeck[c.deck_id] = cardsByDeck[c.deck_id] || [];
+        cardsByDeck[c.deck_id].push({
+          id: c.id,
+          front: c.front,
+          back: c.back,
+          status: c.status,
+          easeFactor: c.ease_factor,
+          stability: c.stability,
+          difficulty: c.difficulty,
+          interval: c.interval,
+          reviewCount: c.review_count,
+          dueDate: c.due_date,
+          lastReviewed: c.last_reviewed,
+          meta: c.meta,
+        });
+      }
+      return decks.map((d) => ({ ...d, cards: cardsByDeck[d.id] || [] }));
+    } catch (e) {
+      // If cards fetch fails, return decks as-is with embedded cards field
+      return decks;
+    }
   },
 
-  async addDeck(userId: string, deck: Deck): Promise<Deck> {
-    const decks = await this.getDecks(userId);
-    const newDeck = { ...deck, userId };
-    const newDecks = [newDeck, ...decks];
-    localStorage.setItem(this.getStorageKey(userId), JSON.stringify(newDecks));
-    return delay(newDeck);
+  async addDeck(_userId: string, deck: Deck): Promise<Deck> {
+    const res = await safeFetch("/api/decks", {
+      method: "POST",
+      body: JSON.stringify(deck),
+    });
+    return Array.isArray(res) ? res[0] : res;
   },
 
-  async updateDeck(userId: string, updatedDeck: Deck): Promise<Deck> {
-    const decks = await this.getDecks(userId);
-    const newDecks = decks.map(d => d.id === updatedDeck.id ? updatedDeck : d);
-    localStorage.setItem(this.getStorageKey(userId), JSON.stringify(newDecks));
-    return delay(updatedDeck);
+  async updateDeck(_userId: string, updatedDeck: Deck): Promise<Deck> {
+    const res = await safeFetch("/api/decks", {
+      method: "PUT",
+      body: JSON.stringify(updatedDeck),
+    });
+    return res;
   },
 
-  async deleteDeck(userId: string, id: string): Promise<void> {
-    const decks = await this.getDecks(userId);
-    const newDecks = decks.filter(d => d.id !== id);
-    localStorage.setItem(this.getStorageKey(userId), JSON.stringify(newDecks));
-    return delay(undefined);
-  }
+  async deleteDeck(_userId: string, id: string): Promise<void> {
+    // Prefer query-string id for delete
+    await safeFetch(`/api/decks?id=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    return;
+  },
 };

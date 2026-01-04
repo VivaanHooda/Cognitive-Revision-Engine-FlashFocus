@@ -10,35 +10,44 @@ AI-powered spaced repetition flashcard application built with Next.js, TypeScrip
 - 📈 **Statistics Dashboard**: Track your learning progress with detailed insights
 - 🎯 **Smart Card Queue**: Prioritizes due cards and failed cards for immediate review
 - 🎤 **Voice Input**: Use speech recognition for answering flashcards
-- 🔐 **User Authentication**: Simple JWT-based authentication with localStorage
+- 🔐 **User Authentication**: Supabase Auth (email/password) — server-backed sessions and user management
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - npm or yarn
 - Google Gemini API key ([Get one here](https://aistudio.google.com/app/apikey))
 
 ### Installation
 
 1. Clone the repository:
+
 ```bash
 git clone <your-repo-url>
 cd Rewise-main
 ```
 
 2. Install dependencies:
+
 ```bash
 npm install
 ```
 
-3. Create a `.env.local` file (optional, API key is stored in browser):
+3. Create a `.env.local` file and add your Gemini and Supabase keys:
+
 ```bash
 cp .env.example .env.local
+# In .env.local, set:
+# GEMINI_API_KEY=your_gemini_api_key
+# NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+# NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+# SUPABASE_SERVICE_KEY=your_service_role_key  # server-only
 ```
 
 4. Run the development server:
+
 ```bash
 npm run dev
 ```
@@ -47,7 +56,7 @@ npm run dev
 
 ### First Time Setup
 
-1. Register a new account (stored locally in browser)
+1. Register a new account (via Supabase Auth)
 2. Add your Google Gemini API key in the deck creation modal
 3. Create your first AI-generated deck!
 
@@ -59,7 +68,7 @@ npm run dev
 - **AI**: Google Gemini API
 - **Charts**: Recharts
 - **Icons**: Lucide React
-- **Storage**: Browser localStorage (client-side only)
+- **Storage**: Supabase Postgres (server-side) — decks, cards and user SRS params are persisted in the database
 
 ## Project Structure
 
@@ -86,18 +95,21 @@ npm run dev
 ## Features in Detail
 
 ### AI Deck Generation
+
 1. Enter any topic (e.g., "Photosynthesis", "React Hooks")
 2. AI breaks it down into logical subtopics
 3. Select which subtopics to generate
 4. Get 6-10 atomic flashcards per subtopic
 
 ### Spaced Repetition
+
 - **Again**: Card forgotten, review in < 1 day
 - **Hard**: Partially remembered, modest interval increase
 - **Good**: Correctly recalled, standard interval
 - **Easy**: Effortlessly recalled, longest interval
 
 ### AI Tutor
+
 - Ask questions about any flashcard during study
 - Context-aware responses based on card content
 - Conversational interface within study session
@@ -111,10 +123,10 @@ npm start
 
 ## Notes
 
-- All data is stored in browser localStorage
-- API keys are stored client-side only
-- No backend server required
-- Works completely offline after initial load (except AI features)
+- All user data (decks, cards, SRS params) is stored in Supabase Postgres with RLS
+- API keys and service secrets should be stored in `.env.local` or in your deployment environment; do not commit keys to Git
+- The app depends on network connectivity for persistence and AI features; it is not fully offline-capable
+- Use `scripts/create_supabase_schema.sql` to create required tables and RLS policies in your Supabase project
 
 ## License
 

@@ -23,6 +23,14 @@ View your app in AI Studio: https://ai.studio/apps/drive/1hvnYohCcWsAE6FV4n2EWM5
    - `SUPABASE_SERVICE_KEY` (service role key, server-only)
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY` (client anon key)
 
+   Create the `decks` table in your Supabase database (use the SQL editor or psql). You can use the provided SQL file `scripts/create_supabase_schema.sql`:
+
+   ```sql
+   -- Run the contents of scripts/create_supabase_schema.sql in Supabase SQL editor
+   ```
+
+   The SQL enables Row Level Security (RLS) and creates a policy so authenticated users can only access their own decks — confirm these policies in the Supabase SQL editor or Dashboard.
+
    Then install the client packages and run the demo migration:
 
    ```bash
@@ -30,7 +38,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/1hvnYohCcWsAE6FV4n2EWM5
    npm run migrate:demo
    ```
 
-   This will create the demo user in your Supabase project.
+   This will create the demo user in your Supabase project and you can seed decks by visiting the app or running the demo migrations.
 
 4. Run the app:
    `npm run dev`
