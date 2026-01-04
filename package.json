@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test:fsrs": "node ./scripts/test-fsrs.js",
     "migrate:demo": "node ./scripts/migrate-demo-user.js"
   },
   "dependencies": {
