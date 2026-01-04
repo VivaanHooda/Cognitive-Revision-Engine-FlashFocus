@@ -143,10 +143,10 @@ export const StudyView: React.FC<StudyViewProps> = ({
     setIsFlipped(true);
     if (userAnswer.trim()) {
       setIsGrading(true);
-      evaluateAnswer(currentCard.front, currentCard.back, userAnswer)
-        .then(setGradingResult)
-        .catch((err) => console.error("Grading failed", err))
-        .finally(() => setIsGrading(false));
+      // evaluateAnswer(currentCard.front, currentCard.back, userAnswer)
+      //   .then(setGradingResult)
+      //   .catch((err) => console.error("Grading failed", err))
+      //   .finally(() => setIsGrading(false));
     }
   };
 

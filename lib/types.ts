@@ -14,6 +14,9 @@ export interface FlashcardData {
   reviewCount: number;
   dueDate?: number; // timestamp
   lastReviewed?: number; // timestamp
+  // FSRS fields
+  stability?: number; // S
+  difficulty?: number; // D
 }
 
 export interface Deck {
