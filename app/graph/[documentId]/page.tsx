@@ -1,0 +1,606 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, Download, Loader2 } from "lucide-react";
+import { supabase } from "@/lib/supabase.client";
+
+// ============================================================================
+// Types
+// ============================================================================
+
+interface ConceptNode {
+  id: string;
+  label: string;
+  type: 'root' | 'topic' | 'subtopic' | 'concept';
+  description?: string;
+  level: number;
+}
+
+interface ConceptEdge {
+  from: string;
+  to: string;
+  relationship: 'contains' | 'prerequisite' | 'related' | 'extends';
+  label?: string;
+}
+
+interface ConceptGraph {
+  nodes: ConceptNode[];
+  edges: ConceptEdge[];
+}
+
+interface Document {
+  id: string;
+  title: string;
+  topic_tree?: ConceptGraph;
+}
+
+// ============================================================================
+// Full Screen Graph Page
+// ============================================================================
+
+export default function GraphPage() {
+  const params = useParams();
+  const router = useRouter();
+  const documentId = params.documentId as string;
+  
+  const [document, setDocument] = useState<Document | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const svgRef = React.useRef<SVGSVGElement>(null);
+
+  // Fetch document data
+  useEffect(() => {
+    async function fetchDocument() {
+      try {
+        // Get Supabase access token for authentication
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+
+        const headers: Record<string, string> = {};
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+
+        const response = await fetch(`/api/generate-tree?documentId=${documentId}`, {
+          headers,
+          credentials: "include",
+        });
+        
+        if (!response.ok) throw new Error('Failed to load document');
+        const data = await response.json();
+        
+        // Check if graph exists
+        if (!data.topicTree) {
+          setError('This document does not have a knowledge graph yet. Please generate it first from the Documents page.');
+          setLoading(false);
+          return;
+        }
+        
+        setDocument({
+          id: data.documentId,
+          title: data.title,
+          topic_tree: data.topicTree,
+        });
+        
+        // Auto-expand root node
+        if (data.topicTree?.nodes) {
+          const rootNode = data.topicTree.nodes.find((n: ConceptNode) => n.type === 'root');
+          if (rootNode) {
+            setExpandedNodes(new Set([rootNode.id]));
+          }
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load');
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchDocument();
+  }, [documentId]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="animate-spin mx-auto mb-4 text-indigo-600" size={48} />
+          <p className="text-gray-600">Loading knowledge graph...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !document?.topic_tree) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-8">
+        <div className="text-center max-w-md">
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-3xl">⚠️</span>
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">
+            {error ? 'Error Loading Graph' : 'No Graph Available'}
+          </h2>
+          <p className="text-gray-600 mb-6">
+            {error || 'This document does not have a knowledge graph yet.'}
+          </p>
+          <div className="flex gap-3 justify-center">
+            <button
+              onClick={() => router.back()}
+              className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg transition-colors"
+            >
+              Go Back
+            </button>
+            <a
+              href="/"
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors"
+            >
+              Go to Documents
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const graph = document.topic_tree;
+
+  // Toggle node expansion
+  const toggleNode = (nodeId: string) => {
+    setExpandedNodes(prev => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) {
+        // Collapse: remove this node and all its descendants
+        const toCollapse = getDescendants(nodeId, graph);
+        toCollapse.forEach(id => next.delete(id));
+        next.delete(nodeId);
+      } else {
+        // Expand: add this node
+        next.add(nodeId);
+      }
+      return next;
+    });
+  };
+
+  // Get all descendant node IDs
+  const getDescendants = (nodeId: string, graph: ConceptGraph): string[] => {
+    const children = graph.edges
+      .filter(e => e.from === nodeId && e.relationship === 'contains')
+      .map(e => e.to);
+    
+    const descendants: string[] = [];
+    children.forEach(childId => {
+      descendants.push(childId);
+      descendants.push(...getDescendants(childId, graph));
+    });
+    
+    return descendants;
+  };
+
+  // Get visible nodes (expanded nodes and their direct children)
+  const getVisibleNodes = () => {
+    const visible = new Set<string>();
+    
+    // Add all expanded nodes
+    expandedNodes.forEach(nodeId => visible.add(nodeId));
+    
+    // Add direct children of expanded nodes
+    expandedNodes.forEach(nodeId => {
+      graph.edges
+        .filter(e => e.from === nodeId && e.relationship === 'contains')
+        .forEach(e => visible.add(e.to));
+    });
+    
+    const visibleNodes = graph.nodes.filter(n => visible.has(n.id));
+    return visibleNodes;
+  };
+
+  // Calculate layout positions
+  const calculateLayout = () => {
+    const visibleNodes = getVisibleNodes();
+    const positions: Record<string, { x: number; y: number }> = {};
+    const width = 1400;
+    const height = 800;
+    
+    // Group by level
+    const nodesByLevel: Record<number, ConceptNode[]> = {};
+    visibleNodes.forEach(node => {
+      if (!nodesByLevel[node.level]) nodesByLevel[node.level] = [];
+      nodesByLevel[node.level].push(node);
+    });
+    
+    const levels = Object.keys(nodesByLevel).map(Number).sort((a, b) => a - b);
+    const levelHeight = height / (levels.length + 1);
+    
+    levels.forEach((level, levelIdx) => {
+      const nodesAtLevel = nodesByLevel[level];
+      const levelWidth = width / (nodesAtLevel.length + 1);
+      
+      nodesAtLevel.forEach((node, idx) => {
+        positions[node.id] = {
+          x: levelWidth * (idx + 1),
+          y: levelHeight * (levelIdx + 1),
+        };
+      });
+    });
+    
+    return positions;
+  };
+
+  const visibleNodes = getVisibleNodes();
+  const positions = calculateLayout();
+  
+  // Get visible edges (only between visible nodes)
+  const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
+  const visibleEdges = graph.edges.filter(
+    e => visibleNodeIds.has(e.from) && visibleNodeIds.has(e.to)
+  );
+
+  // Check if node has children
+  const hasChildren = (nodeId: string) => {
+    return graph.edges.some(e => e.from === nodeId && e.relationship === 'contains');
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="max-w-screen-2xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => router.back()}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <ArrowLeft size={20} className="text-gray-600" />
+            </button>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">{document.title}</h1>
+              <p className="text-sm text-gray-500">
+                {visibleNodes.length} of {graph.nodes.length} nodes visible · {visibleEdges.length} connections
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setZoom(Math.max(0.5, zoom - 0.1))}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Zoom Out"
+            >
+              <ZoomOut size={20} className="text-gray-600" />
+            </button>
+            <span className="text-sm text-gray-600 min-w-[60px] text-center">
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              onClick={() => setZoom(Math.min(2, zoom + 0.1))}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Zoom In"
+            >
+              <ZoomIn size={20} className="text-gray-600" />
+            </button>
+            <button
+              onClick={() => setZoom(1)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Reset Zoom"
+            >
+              <Maximize2 size={20} className="text-gray-600" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Graph Canvas */}
+      <div className="h-[calc(100vh-88px)] overflow-auto p-8">
+        <div className="max-w-screen-2xl mx-auto">
+          <svg
+            ref={svgRef}
+            viewBox="0 0 1400 800"
+            className="w-full bg-white rounded-2xl shadow-lg border border-gray-200"
+            style={{ 
+              height: '800px',
+              transform: `scale(${zoom})`,
+              transformOrigin: 'top center',
+              transition: 'transform 0.2s'
+            }}
+          >
+            {/* Define arrow markers for edges */}
+            <defs>
+              {/* Gradients for nodes */}
+              <radialGradient id="gradient-root" cx="30%" cy="30%">
+                <stop offset="0%" stopColor="#818cf8" />
+                <stop offset="100%" stopColor="#4f46e5" />
+              </radialGradient>
+              <radialGradient id="gradient-topic" cx="30%" cy="30%">
+                <stop offset="0%" stopColor="#a78bfa" />
+                <stop offset="100%" stopColor="#7c3aed" />
+              </radialGradient>
+              <radialGradient id="gradient-subtopic" cx="30%" cy="30%">
+                <stop offset="0%" stopColor="#93c5fd" />
+                <stop offset="100%" stopColor="#3b82f6" />
+              </radialGradient>
+              <radialGradient id="gradient-concept" cx="30%" cy="30%">
+                <stop offset="0%" stopColor="#f3f4f6" />
+                <stop offset="100%" stopColor="#d1d5db" />
+              </radialGradient>
+              
+              {/* Arrow markers */}
+              <marker
+                id="arrow-contains"
+                markerWidth="10"
+                markerHeight="10"
+                refX="9"
+                refY="3"
+                orient="auto"
+              >
+                <polygon points="0 0, 10 3, 0 6" fill="#9ca3af" />
+              </marker>
+              <marker
+                id="arrow-prerequisite"
+                markerWidth="10"
+                markerHeight="10"
+                refX="9"
+                refY="3"
+                orient="auto"
+              >
+                <polygon points="0 0, 10 3, 0 6" fill="#f59e0b" />
+              </marker>
+              <marker
+                id="arrow-related"
+                markerWidth="10"
+                markerHeight="10"
+                refX="9"
+                refY="3"
+                orient="auto"
+              >
+                <polygon points="0 0, 10 3, 0 6" fill="#3b82f6" />
+              </marker>
+              <marker
+                id="arrow-extends"
+                markerWidth="10"
+                markerHeight="10"
+                refX="9"
+                refY="3"
+                orient="auto"
+              >
+                <polygon points="0 0, 10 3, 0 6" fill="#a855f7" />
+              </marker>
+              
+              {/* Glow filters */}
+              <filter id="glow-selected">
+                <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+                <feMerge>
+                  <feMergeNode in="coloredBlur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
+            </defs>
+
+            {/* Render edges */}
+            {visibleEdges.map((edge, idx) => {
+              const fromPos = positions[edge.from];
+              const toPos = positions[edge.to];
+              if (!fromPos || !toPos) return null;
+
+              const colors: Record<string, string> = {
+                contains: '#9ca3af',
+                prerequisite: '#f59e0b',
+                related: '#3b82f6',
+                extends: '#a855f7',
+              };
+
+              const isHighlighted = selectedNode === edge.from || selectedNode === edge.to;
+
+              return (
+                <g key={idx}>
+                  {/* Shadow line for depth */}
+                  <line
+                    x1={fromPos.x}
+                    y1={fromPos.y}
+                    x2={toPos.x}
+                    y2={toPos.y}
+                    stroke="black"
+                    strokeWidth={isHighlighted ? 4 : 3}
+                    strokeOpacity={0.1}
+                    transform="translate(2, 2)"
+                  />
+                  {/* Main line */}
+                  <line
+                    x1={fromPos.x}
+                    y1={fromPos.y}
+                    x2={toPos.x}
+                    y2={toPos.y}
+                    stroke={colors[edge.relationship]}
+                    strokeWidth={isHighlighted ? 4 : 2.5}
+                    strokeOpacity={isHighlighted ? 1 : 0.5}
+                    markerEnd={`url(#arrow-${edge.relationship})`}
+                    className="transition-all duration-300"
+                    style={{
+                      strokeDasharray: edge.relationship === 'related' ? '5,5' : 'none'
+                    }}
+                  />
+                </g>
+              );
+            })}
+
+            {/* Render nodes */}
+            {visibleNodes.map((node) => {
+              const pos = positions[node.id];
+              if (!pos) return null;
+
+              const isExpanded = expandedNodes.has(node.id);
+              const isSelected = selectedNode === node.id;
+              const nodeHasChildren = hasChildren(node.id);
+
+              const colors = {
+                root: { fill: 'url(#gradient-root)', stroke: '#4f46e5', text: '#ffffff' },
+                topic: { fill: 'url(#gradient-topic)', stroke: '#7c3aed', text: '#ffffff' },
+                subtopic: { fill: 'url(#gradient-subtopic)', stroke: '#3b82f6', text: '#ffffff' },
+                concept: { fill: 'url(#gradient-concept)', stroke: '#9ca3af', text: '#1f2937' },
+              };
+
+              const color = colors[node.type];
+              const radius = node.type === 'root' ? 60 : node.type === 'topic' ? 50 : 40;
+
+              // Wrap text to fit in circle
+              const wrapText = (text: string, maxWidth: number) => {
+                const words = text.split(' ');
+                const lines: string[] = [];
+                let currentLine = '';
+
+                words.forEach(word => {
+                  const testLine = currentLine ? `${currentLine} ${word}` : word;
+                  // Rough estimate: 7px per character
+                  if (testLine.length * 7 > maxWidth) {
+                    if (currentLine) lines.push(currentLine);
+                    currentLine = word;
+                  } else {
+                    currentLine = testLine;
+                  }
+                });
+                
+                if (currentLine) lines.push(currentLine);
+                return lines.slice(0, 2); // Max 2 lines
+              };
+
+              const textLines = wrapText(node.label, radius * 1.4);
+
+              return (
+                <g key={node.id}>
+                  {/* Node circle */}
+                  <circle
+                    cx={pos.x}
+                    cy={pos.y}
+                    r={radius}
+                    fill={color.fill}
+                    stroke={color.stroke}
+                    strokeWidth={isSelected ? 4 : 2}
+                    className="cursor-pointer transition-all duration-300 hover:opacity-90"
+                    onClick={() => {
+                      setSelectedNode(isSelected ? null : node.id);
+                      // Only toggle if not root and has children
+                      if (nodeHasChildren && node.type !== 'root') {
+                        toggleNode(node.id);
+                      }
+                    }}
+                    style={{
+                      filter: isSelected ? 'drop-shadow(0 10px 20px rgba(99, 102, 241, 0.4))' : 'drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1))'
+                    }}
+                  />
+
+                  {/* Expand/Collapse indicator - NOT for root node */}
+                  {nodeHasChildren && node.type !== 'root' && (
+                    <g>
+                      <circle
+                        cx={pos.x + radius - 10}
+                        cy={pos.y - radius + 10}
+                        r="12"
+                        fill="white"
+                        stroke={color.stroke}
+                        strokeWidth="2"
+                        className="cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleNode(node.id);
+                        }}
+                      />
+                      <text
+                        x={pos.x + radius - 10}
+                        y={pos.y - radius + 10}
+                        fill={color.stroke}
+                        fontSize="16"
+                        fontWeight="bold"
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        className="pointer-events-none select-none"
+                      >
+                        {isExpanded ? '−' : '+'}
+                      </text>
+                    </g>
+                  )}
+
+                  {/* Node label with multi-line support */}
+                  <text
+                    x={pos.x}
+                    y={pos.y}
+                    fill={color.text}
+                    fontSize={node.type === 'root' ? 14 : node.type === 'topic' ? 12 : 10}
+                    fontWeight={node.type === 'root' ? 'bold' : 'normal'}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    className="pointer-events-none select-none"
+                  >
+                    {textLines.map((line, i) => (
+                      <tspan
+                        key={i}
+                        x={pos.x}
+                        dy={i === 0 ? 0 : (node.type === 'root' ? 16 : node.type === 'topic' ? 14 : 12)}
+                      >
+                        {line}
+                      </tspan>
+                    ))}
+                  </text>
+
+                  {/* Selection ring */}
+                  {isSelected && (
+                    <circle
+                      cx={pos.x}
+                      cy={pos.y}
+                      r={radius + 8}
+                      fill="none"
+                      stroke="#6366f1"
+                      strokeWidth={3}
+                      strokeDasharray="4 4"
+                      opacity={0.8}
+                      filter="url(#glow-selected)"
+                    >
+                      <animate
+                        attributeName="r"
+                        from={radius + 8}
+                        to={radius + 12}
+                        dur="1.5s"
+                        repeatCount="indefinite"
+                      />
+                      <animate
+                        attributeName="opacity"
+                        from="0.8"
+                        to="0.3"
+                        dur="1.5s"
+                        repeatCount="indefinite"
+                      />
+                    </circle>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* Legend */}
+          <div className="mt-6 flex items-center justify-center gap-6 text-sm text-gray-600">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-0.5 bg-gray-400"></div>
+              <span>Contains</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-0.5 bg-amber-500"></div>
+              <span>Prerequisite</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-0.5 bg-blue-500"></div>
+              <span>Related</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-0.5 bg-purple-500"></div>
+              <span>Extends</span>
+            </div>
+            <div className="ml-4 text-gray-500">
+              Click nodes with + to expand · Click again to collapse
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

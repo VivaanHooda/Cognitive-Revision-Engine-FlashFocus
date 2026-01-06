@@ -7,6 +7,7 @@ import { StudyView } from "@/components/StudyView";
 import { Statistics } from "@/components/Statistics";
 import { Timeline } from "@/components/Timeline";
 import { Auth } from "@/components/Auth";
+import { DocumentsView } from "@/components/DocumentsView";
 import { db } from "@/lib/db";
 import * as authClient from "@/lib/auth.client";
 import {
@@ -16,6 +17,7 @@ import {
   LogOut,
   User as UserIcon,
   Calendar as CalendarIcon,
+  FileText,
 } from "lucide-react";
 
 export default function Home() {
@@ -148,6 +150,17 @@ export default function Home() {
                   <span className="hidden md:inline">Library</span>
                 </button>
                 <button
+                  onClick={() => setView(AppView.DOCUMENTS)}
+                  className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-2 text-sm font-semibold ${
+                    view === AppView.DOCUMENTS
+                      ? "bg-white text-indigo-600 shadow-sm"
+                      : "text-gray-500 hover:text-gray-900"
+                  }`}
+                >
+                  <FileText size={18} />
+                  <span className="hidden md:inline">Documents</span>
+                </button>
+                <button
                   onClick={() => setView(AppView.TIMELINE)}
                   className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-2 text-sm font-semibold ${
                     view === AppView.TIMELINE
@@ -220,6 +233,10 @@ export default function Home() {
                 onDeleteDeck={handleDeleteDeck}
                 userId={currentUser?.id || ""}
               />
+            )}
+
+            {view === AppView.DOCUMENTS && (
+              <DocumentsView userId={currentUser?.id || ""} />
             )}
 
             {view === AppView.STUDY && activeDeck && (
