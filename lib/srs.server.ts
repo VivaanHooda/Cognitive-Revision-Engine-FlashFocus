@@ -8,7 +8,7 @@ import { FlashcardData, StudyGrade } from "./types";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DECAY = -0.5;
 const EPS = 1e-6;
-const MAX_STABILITY = 100.0;
+const MAX_STABILITY = 20000;
 
 export const DEFAULT_FSRS_PARAMS = {
   w0: 0.4,
@@ -22,6 +22,14 @@ export const DEFAULT_FSRS_PARAMS = {
   init_s_hard: 1.0,
   init_s_good: 2.5,
   init_s_easy: 4.0,
+};
+
+// Grade-specific target retrievability used for scheduling/previewing intervals
+export const SRS_TARGETS: Record<"again" | "hard" | "good" | "easy", number> = {
+  again: 0.5,
+  hard: 0.95,
+  good: 0.9,
+  easy: 0.85,
 };
 
 function mergeParams(override?: Partial<typeof DEFAULT_FSRS_PARAMS>) {
@@ -43,13 +51,40 @@ function initialStability(gradeNum: number, p: typeof DEFAULT_FSRS_PARAMS) {
   return p.init_s_easy;
 }
 
-function updateDifficulty(
+/*function updateDifficulty(
   D: number,
   gradeNum: number,
   p: typeof DEFAULT_FSRS_PARAMS
 ) {
   // Easier grades should reduce difficulty; harder grades should increase it.
   const D_new = D + p.w0 * (3 - gradeNum) + p.w1 * (5 - D);
+  
+  return clamp(D_new, 1.0, 10.0);
+}
+  */
+function updateDifficulty(
+  D: number,
+  grade: number, // 1=Again, 2=Hard, 3=Good, 4=Easy
+  p: typeof DEFAULT_FSRS_PARAMS
+): number {
+  /**
+   * FSRS-6 difficulty update with mean reversion
+   *
+   * - Again / Hard → difficulty increases
+   * - Good → stays ~same
+   * - Easy → difficulty decreases
+   * - Mean reversion pulls D toward 5
+   */
+
+  // Feedback term (core FSRS rule)
+  const delta = p.w0 * (3.0 - grade);
+
+  // Mean reversion term (prevents runaway difficulty)
+  const meanReversion = p.w1 * (5.0 - D);
+
+  const D_new = D + delta + meanReversion;
+
+  // Clamping between 1.0 and 10.0
   return clamp(D_new, 1.0, 10.0);
 }
 
@@ -59,7 +94,9 @@ function stabilityFail(
   R: number,
   p: typeof DEFAULT_FSRS_PARAMS
 ) {
-  return clamp(S * p.w1 * Math.pow(D, p.w2) * Math.pow(R, p.w3), EPS, S);
+  //return clamp(S * p.w1 * Math.pow(D, p.w2) * Math.pow(R, p.w3), EPS, S);
+  const decay = p.w1 * Math.pow(R, p.w3);
+  return clamp(S * decay, EPS, S * 0.9);
 }
 
 function stabilitySuccess(
@@ -76,7 +113,10 @@ function stabilitySuccess(
   return clamp(S * (1 + growth), EPS, MAX_STABILITY);
 }
 
-export function predictInterval(stability: number, targetRetrievability = 0.9) {
+export function predictInterval(
+  stability: number,
+  targetRetrievability = 0.95
+) {
   const tr = clamp(targetRetrievability, EPS, 0.99);
   const interval = (stability * Math.log(tr)) / DECAY;
   return Math.max(1.0, interval);
@@ -98,11 +138,15 @@ function gradeToNum(grade: StudyGrade) {
 export const calculateNextReview = (
   card: FlashcardData,
   grade: StudyGrade,
-  overrideParams?: Partial<typeof DEFAULT_FSRS_PARAMS>
+  overrideParams?: Partial<typeof DEFAULT_FSRS_PARAMS>,
+  // Optional per-call target retrievability (keeps simulate and actual grading consistent)
+  targetRetrievability?: number
 ): Partial<FlashcardData> => {
   const now = Date.now();
   const gradeNum = gradeToNum(grade);
   const p = mergeParams(overrideParams);
+  const target =
+    typeof targetRetrievability === "number" ? targetRetrievability : 0.95;
 
   // Read existing values or defaults
   let S = typeof card.stability === "number" ? card.stability : undefined;
@@ -129,8 +173,8 @@ export const calculateNextReview = (
       };
     }
 
-    // For non-failure first review, predict first interval
-    const intervalDays = Math.ceil(predictInterval(S));
+    // For non-failure first review, predict first interval using target
+    const intervalDays = Math.ceil(predictInterval(S, target));
     const status = intervalDays >= 21 ? "mastered" : "review";
 
     const dueDate = (() => {
@@ -165,13 +209,15 @@ export const calculateNextReview = (
   let S_new: number;
   if (grade === "again") {
     S_new = stabilityFail(S!, D_new, R, p);
+  } else if (grade == "hard") {
+    S_new = clamp(S! * 1.05, EPS, MAX_STABILITY);
   } else {
     S_new = stabilitySuccess(S!, D_new, R, p);
   }
 
-  // Determine interval
+  // Determine interval using the target retrievability supplied
   const intervalDays =
-    grade === "again" ? 0 : Math.ceil(predictInterval(S_new));
+    grade === "again" ? 0 : Math.ceil(predictInterval(S_new, target));
 
   // Determine status
   let status: FlashcardData["status"] = "review";

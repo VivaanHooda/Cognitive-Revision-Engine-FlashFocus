@@ -7,7 +7,7 @@ const GRADES = ["again", "hard", "good", "easy"] as const;
 export async function POST(req: Request) {
   try {
     // Allow unauthenticated simulation (useful for guest users) — auth optional
-    await getUserFromRequest(req).catch(() => null);
+    const user = await getUserFromRequest(req).catch(() => null);
 
     const body = await req.json();
     const { card } = body;
@@ -15,6 +15,16 @@ export async function POST(req: Request) {
     if (!card) {
       return NextResponse.json({ error: "card is required" }, { status: 400 });
     }
+
+    // Fetch per-user params once
+    const { supabaseAdmin } = await import("@/lib/supabase.server");
+    const { data: paramsRow } = await supabaseAdmin
+      .from("srs_params")
+      .select("params")
+      .eq("user_id", user?.id || null)
+      .single()
+      .maybeSingle();
+    const params = paramsRow?.params;
 
     const out: Record<
       string,
@@ -30,17 +40,8 @@ export async function POST(req: Request) {
     };
 
     for (const g of GRADES) {
-      const { data: paramsRow } = await (
-        await import("@/lib/supabase.server")
-      ).supabaseAdmin
-        .from("srs_params")
-        .select("params")
-        .eq("user_id", user?.id || null)
-        .single()
-        .maybeSingle();
-      const params = paramsRow?.params;
-
-      const r = calculateNextReview(card, g as any, params);
+      // Run the same calculation that grading would use, but pass grade-specific target so stability and interval are consistent
+      const r = calculateNextReview(card, g as any, params, TARGET[g]);
       const stability = (r as any).stability as number | undefined;
       const difficulty = (r as any).difficulty as number | undefined;
       if (g === "again") {

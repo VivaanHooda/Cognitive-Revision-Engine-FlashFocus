@@ -84,6 +84,19 @@ function assertTrue(name: string, cond: boolean) {
     assertTrue("Test4: hard < good", daysHard < daysGood);
     assertTrue("Test4: good < easy", daysGood < daysEasy);
 
+    // Test 5: calculateNextReview with grade-specific target should produce interval equal to ceil(predictInterval(stability, TARGET))
+    for (const g of ["hard", "good", "easy"]) {
+      const r = calculateNextReview(card2, g as any, undefined, TARGET[g]);
+      if (r.stability) {
+        const floatDays = predictInterval(r.stability as number, TARGET[g]);
+        assertEqual(
+          `Test5: ${g} ceil interval matches predictInterval`,
+          Math.ceil(floatDays),
+          r.interval
+        );
+      }
+    }
+
     console.log("All SRS tests passed ✅");
     process.exit(0);
   } catch (err) {

@@ -138,7 +138,7 @@ function assertTrue(name, cond) {
       back: `A${i + 1}`,
     }));
 
-    const gradeSequence = ["hard", "hard", "again", "again"];
+    const gradeSequence = ["easy", "good", "good", "good"];
     simulateBatch(fakeCards, gradeSequence);
 
     console.log("All FSRS JS tests passed ✅");

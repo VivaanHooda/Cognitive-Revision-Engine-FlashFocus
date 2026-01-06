@@ -32,7 +32,15 @@ export async function POST(req: Request) {
     const params =
       paramsRow?.params ??
       (await import("@/lib/srs.server")).DEFAULT_FSRS_PARAMS;
-    const result = calculateNextReview(card, grade, params);
+
+    const TARGET: Record<any, number> = {
+      again: 0.5,
+      hard: 0.95,
+      good: 0.9,
+      easy: 0.85,
+    };
+
+    const result = calculateNextReview(card, grade, params, TARGET[grade]);
 
     // Persist the (possibly-default) params back to the DB so every user has a params row
     // Always upsert to update the row and refreshed timestamps even if params are identical
