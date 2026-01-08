@@ -73,7 +73,12 @@ export const StudyView: React.FC<StudyViewProps> = ({
   // Prefetch simulated intervals for the current card from the server
   const [simulatedIntervals, setSimulatedIntervals] = useState<Record<
     StudyGrade,
-    string
+    {
+      days: number;
+      label: string;
+      stability?: number;
+      difficulty?: number;
+    }
   > | null>(null);
   useEffect(() => {
     let mounted = true;
@@ -306,7 +311,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
   const getSimulatedInterval = (grade: StudyGrade) => {
     // Prefer server-provided simulated intervals (fetched on card change)
     if (simulatedIntervals && simulatedIntervals[grade])
-      return simulatedIntervals[grade];
+      return simulatedIntervals[grade].label;
 
     // Fallback: small local calculation for instant UI feedback
     const interval = currentCard.interval || 0;
@@ -319,6 +324,17 @@ export const StudyView: React.FC<StudyViewProps> = ({
     if (grade === "easy")
       return `${interval === 0 ? 4 : Math.ceil(interval * 2.5 * 1.3)}d`;
     return "< 1d";
+  };
+
+  const renderSimLabel = (grade: StudyGrade) => {
+    const sim = simulatedIntervals?.[grade];
+    const label = sim ? sim.label : getSimulatedInterval(grade);
+    const title = sim
+      ? `Stability: ${sim.stability?.toFixed(2) ?? "-"}, Difficulty: ${
+          sim.difficulty?.toFixed(2) ?? "-"
+        }`
+      : undefined;
+    return title ? <span title={title}>{label}</span> : <span>{label}</span>;
   };
 
   return (
@@ -570,7 +586,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
               >
                 <span className="font-bold">Again</span>
                 <span className="text-xs opacity-75 mt-1">
-                  {getSimulatedInterval("again")}
+                  {renderSimLabel("again")}
                 </span>
               </button>
               <button
@@ -583,7 +599,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
               >
                 <span className="font-bold">Hard</span>
                 <span className="text-xs opacity-75 mt-1">
-                  {getSimulatedInterval("hard")}
+                  {renderSimLabel("hard")}
                 </span>
               </button>
               <button
@@ -596,7 +612,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
               >
                 <span className="font-bold">Good</span>
                 <span className="text-xs opacity-75 mt-1">
-                  {getSimulatedInterval("good")}
+                  {renderSimLabel("good")}
                 </span>
               </button>
               <button
@@ -609,7 +625,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
               >
                 <span className="font-bold">Easy</span>
                 <span className="text-xs opacity-75 mt-1">
-                  {getSimulatedInterval("easy")}
+                  {renderSimLabel("easy")}
                 </span>
               </button>
             </div>

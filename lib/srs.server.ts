@@ -40,7 +40,8 @@ function initialStability(gradeNum: number) {
 }
 
 function updateDifficulty(D: number, gradeNum: number) {
-  const D_new = D + params.w0 * (gradeNum - 3) + params.w1 * (5 - D);
+  // Easier grades should reduce difficulty; harder grades should increase it.
+  const D_new = D + params.w0 * (3 - gradeNum) + params.w1 * (5 - D);
   return clamp(D_new, 1.0, 10.0);
 }
 
@@ -61,7 +62,7 @@ function stabilitySuccess(S: number, D: number, R: number) {
   return clamp(S * (1 + growth), EPS, MAX_STABILITY);
 }
 
-function predictInterval(stability: number, targetRetrievability = 0.9) {
+export function predictInterval(stability: number, targetRetrievability = 0.9) {
   const tr = clamp(targetRetrievability, EPS, 0.99);
   const interval = (stability * Math.log(tr)) / DECAY;
   return Math.max(1.0, interval);

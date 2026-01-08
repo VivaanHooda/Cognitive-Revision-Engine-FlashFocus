@@ -47,6 +47,43 @@ function assertTrue(name: string, cond: boolean) {
     assertEqual("Test3: reviewCount increments", second.reviewCount, 2);
     assertEqual("Test3: lastReviewed updated", second.lastReviewed, FAKE_NOW);
 
+    // Test 4: Interval ordering for grades (hard < good < easy)
+    const card2: any = {
+      id: "c2",
+      front: "Q2",
+      back: "A2",
+      stability: 2.5,
+      difficulty: 5,
+      lastReviewed: FAKE_NOW - 10 * 24 * 60 * 60 * 1000, // 10 days ago
+      reviewCount: 3,
+    };
+
+    const { predictInterval } = await import("../lib/srs.server");
+    // Higher target means schedule sooner; hard should have the highest target so intervals follow hard < good < easy
+    const TARGET: Record<any, number> = {
+      again: 0.5,
+      hard: 0.95,
+      good: 0.9,
+      easy: 0.85,
+    };
+
+    const rHard = calculateNextReview(card2, "hard");
+    const rGood = calculateNextReview(card2, "good");
+    const rEasy = calculateNextReview(card2, "easy");
+
+    const daysHard = rHard.stability
+      ? predictInterval(rHard.stability as number, TARGET.hard)
+      : 0;
+    const daysGood = rGood.stability
+      ? predictInterval(rGood.stability as number, TARGET.good)
+      : 0;
+    const daysEasy = rEasy.stability
+      ? predictInterval(rEasy.stability as number, TARGET.easy)
+      : 0;
+
+    assertTrue("Test4: hard < good", daysHard < daysGood);
+    assertTrue("Test4: good < easy", daysGood < daysEasy);
+
     console.log("All SRS tests passed ✅");
     process.exit(0);
   } catch (err) {

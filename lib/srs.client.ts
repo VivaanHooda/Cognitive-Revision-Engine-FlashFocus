@@ -32,6 +32,13 @@ export const calculateNextReview = async (
   return res.json();
 };
 
+export type SimulationResult = {
+  days: number;
+  label: string;
+  stability?: number;
+  difficulty?: number;
+};
+
 export const simulateNextReviews = async (card: FlashcardData) => {
   const authHeader = await getAuthHeader();
   const headers: Record<string, string> = {
@@ -45,5 +52,5 @@ export const simulateNextReviews = async (card: FlashcardData) => {
   });
 
   if (!res.ok) throw new Error(await res.text());
-  return res.json() as Promise<Record<StudyGrade, string>>;
+  return res.json() as Promise<Record<StudyGrade, SimulationResult>>;
 };
