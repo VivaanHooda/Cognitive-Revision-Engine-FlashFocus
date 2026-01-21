@@ -92,12 +92,10 @@ export default function GraphPage() {
           topic_tree: data.topicTree,
         });
         
-        // Auto-expand only first 2 levels (root and direct children)
+        // Auto-expand only root (shows root + its direct children = 2 levels)
         if (data.topicTree?.nodes) {
-          const level0And1Nodes = data.topicTree.nodes
-            .filter((n: ConceptNode) => n.level === 0 || n.level === 1)
-            .map((n: ConceptNode) => n.id);
-          setExpandedNodes(new Set(level0And1Nodes));
+          const rootNode = data.topicTree.nodes.find((n: ConceptNode) => n.level === 0);
+          setExpandedNodes(new Set(rootNode ? [rootNode.id] : []));
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load');
