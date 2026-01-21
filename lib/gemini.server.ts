@@ -132,29 +132,40 @@ export const evaluateAnswer = async (
 ): Promise<GradingResult> => {
   const ai = getAI();
   const prompt = `
-  You are a strict but fair flashcard grader.
+You are a strict flashcard grader.
+
+IMPORTANT — WORD COUNT RULE (MANDATORY):
+1. First, count the number of words in the Student Answer.
+2. If the Student Answer has fewer than 50 words:
+   - You MUST assign grade = 1
+   - You MUST use EXACTLY this feedback text and nothing else:
+     "The answer is too short. Please provide a more detailed answer."
+   - Do NOT evaluate correctness, completeness, or clarity.
+   - Do NOT mention any other issues.
+
+Only if the Student Answer has 50 words or more, proceed with grading.
 
 Inputs:
 - Question: "${question}"
 - Correct Answer: "${correctAnswer}"
 - Student Answer: "${userAnswer}"
 
-Task:
-Evaluate the student's answer for factual correctness, completeness, clarity, and alignment with the correct answer.
+Grading Criteria (apply ONLY if ≥ 50 words):
+Evaluate factual correctness, completeness, clarity, and alignment with the correct answer.
 
 Grading Scale (1–4):
 - 4: Fully correct, complete, and clearly explained.
 - 3: Mostly correct with minor omissions or inaccuracies.
 - 2: Partially correct but missing key points or containing notable errors.
-- 1: Largely incorrect, irrelevant, or incomplete. 
-  Assign grade 1 if student answer is less than 100 words and give this feedback "The answer is too short. Please provide a more detailed answer".
+- 1: Largely incorrect or irrelevant.
 
 Output:
-Return ONLY valid JSON with the following fields:
+Return ONLY valid JSON in this exact format:
 {
   "grade": <integer 1–4>,
   "feedback": "<brief, constructive feedback (1–2 sentences)>"
 }
+
 `;
 
   const response = await ai.models.generateContent({
