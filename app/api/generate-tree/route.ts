@@ -24,6 +24,13 @@ import { extractDocumentText } from "@/lib/ingest";
 import { generateJSONWithRetry } from "@/lib/gemini.safe";
 
 // ============================================================================
+// Route Configuration - Increase timeout for long document processing
+// ============================================================================
+
+export const maxDuration = 300; // 5 minutes (Vercel Pro)
+export const dynamic = 'force-dynamic'; // Disable caching
+
+// ============================================================================
 // Configuration
 // ============================================================================
 
@@ -92,23 +99,28 @@ const getAdminClient = () => {
 // ============================================================================
 
 function getAccessToken(request: NextRequest): string | null {
-  // First check Authorization header
+  // Check Authorization header first
   const authHeader = request.headers.get("Authorization");
   if (authHeader?.startsWith("Bearer ")) {
     return authHeader.slice(7);
   }
   
-  // Check for Supabase auth cookies
+  // Check Supabase auth cookies
   const cookies = request.cookies.getAll();
   for (const cookie of cookies) {
-    if (cookie.name.startsWith('sb-') && cookie.name.endsWith('-auth-token')) {
+    // Check for any sb- cookie that contains 'auth'
+    if (cookie.name.startsWith('sb-') && cookie.name.includes('auth')) {
       try {
-        const session = JSON.parse(cookie.value);
-        if (session?.access_token) {
-          return session.access_token;
+        // Try parsing as JSON
+        const parsed = JSON.parse(cookie.value);
+        if (parsed?.access_token) {
+          return parsed.access_token;
         }
       } catch (e) {
-        return cookie.value;
+        // If not JSON, treat as raw token
+        if (cookie.value && cookie.value.length > 20) {
+          return cookie.value;
+        }
       }
     }
   }
@@ -127,36 +139,36 @@ function getAccessToken(request: NextRequest): string | null {
 function buildTopicTreePrompt(documentText: string): string {
   return `You are an expert curriculum designer and knowledge graph architect analyzing educational content.
 
-Analyze the following document text and create a CONCEPT GRAPH with nodes and edges showing relationships.
+Analyze the following document text and create a CONCISE, HIGH-LEVEL CONCEPT GRAPH.
+
+CRITICAL CONSTRAINTS:
+1. MAX 25 NODES TOTAL. Priority is High-Level Structure over detail.
+2. Levels:
+   - Level 0: Root (1 node)
+   - Level 1: Main Topics (3-6 nodes)
+   - Level 2: Subtopics (2-4 per topic, ONLY key subtopics)
+   - Level 3: DO NOT GENERATE Level 3 nodes yet. Keep it breadth-first.
 
 RULES:
-1. Create nodes for: root document, topics, subtopics, and key concepts
-2. Each node has: id (unique slug), label (display name), type, and level
-3. Create edges showing relationships: contains, prerequisite, related, extends
-4. Identify 4-8 main topics, each with 2-5 subtopics and key concepts
-5. Add prerequisite edges when one concept must be learned before another
-6. Add related edges for concepts that connect but aren't hierarchical
-7. Keep labels concise (2-6 words)
+1. Create nodes for: root document, topics, and subtopics only.
+2. Each node has: id (unique slug), label (display name), type, and level.
+3. Create edges showing relationships: contains, prerequisite, related, extends.
+4. Add prerequisite edges when one concept must be learned before another.
+5. Keep labels concise (2-5 words).
 
 OUTPUT FORMAT (strict JSON only, no markdown):
 {
   "nodes": [
     { "id": "root", "label": "Number Theory Fundamentals", "type": "root", "level": 0 },
     { "id": "divisibility", "label": "Divisibility", "type": "topic", "level": 1 },
-    { "id": "div-def", "label": "Divisibility Definition", "type": "subtopic", "level": 2 },
-    { "id": "div-props", "label": "Properties of Divisibility", "type": "concept", "level": 2 },
     { "id": "gcd", "label": "GCD", "type": "topic", "level": 1 },
-    { "id": "euclidean", "label": "Euclidean Algorithm", "type": "concept", "level": 2 }
+    { "id": "div-algo", "label": "Division Algorithm", "type": "subtopic", "level": 2 }
   ],
   "edges": [
     { "from": "root", "to": "divisibility", "relationship": "contains" },
-    { "from": "divisibility", "to": "div-def", "relationship": "contains" },
-    { "from": "divisibility", "to": "div-props", "relationship": "contains" },
-    { "from": "div-def", "to": "div-props", "relationship": "prerequisite", "label": "needed for" },
     { "from": "root", "to": "gcd", "relationship": "contains" },
-    { "from": "gcd", "to": "euclidean", "relationship": "contains" },
-    { "from": "divisibility", "to": "gcd", "relationship": "prerequisite", "label": "foundation for" },
-    { "from": "div-props", "to": "euclidean", "relationship": "related" }
+    { "from": "divisibility", "to": "div-algo", "relationship": "contains" },
+    { "from": "divisibility", "to": "gcd", "relationship": "prerequisite" }
   ]
 }
 
@@ -361,6 +373,8 @@ export async function POST(request: NextRequest) {
     }
     
     // 7. Generate concept graph using Gemini
+    console.log(`[API] Generating concept graph for ${documentText.length} chars...`);
+    const startTime = Date.now();
     const prompt = buildTopicTreePrompt(documentText);
     
     let conceptGraph: ConceptGraph;
@@ -368,8 +382,12 @@ export async function POST(request: NextRequest) {
       conceptGraph = await generateJSONWithRetry<ConceptGraph>(prompt, {
         model: "gemini-2.5-flash",
       });
+      const duration = Date.now() - startTime;
+      console.log(`[API] Concept graph generated in ${duration}ms`);
+      console.log(`[API] Generated ${conceptGraph.nodes?.length || 0} nodes and ${conceptGraph.edges?.length || 0} edges`);
     } catch (error) {
-      console.error("[API] Concept graph generation failed:", error);
+      const duration = Date.now() - startTime;
+      console.error(`[API] Concept graph generation failed after ${duration}ms:`, error);
       return NextResponse.json(
         { 
           error: "Failed to generate concept graph",
@@ -392,6 +410,7 @@ export async function POST(request: NextRequest) {
     const normalizedGraph = normalizeConceptGraph(conceptGraph);
     
     // 10. Save to database
+    console.log(`[API] Saving concept graph to database...`);
     const { error: updateError } = await supabase
       .from("documents")
       .update({ topic_tree: normalizedGraph })
@@ -400,12 +419,19 @@ export async function POST(request: NextRequest) {
     if (updateError) {
       console.error("[API] Failed to save concept graph:", updateError);
       // Return the graph anyway since generation succeeded
+    } else {
+      console.log(`[API] Concept graph saved successfully`);
     }
     
+    console.log(`[API] Returning concept graph with ${normalizedGraph.nodes.length} nodes`);
     return NextResponse.json({
       success: true,
       topicTree: normalizedGraph,
       cached: false,
+      stats: {
+        nodes: normalizedGraph.nodes.length,
+        edges: normalizedGraph.edges.length,
+      }
     });
     
   } catch (error) {

@@ -1096,8 +1096,19 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ userId }) => {
   const fetchDocuments = async () => {
     setIsLoading(true);
     try {
+      // Wait a bit for session to be ready after login
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       // Get auth token
       const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        console.warn("No session available when fetching documents");
+        setDocuments([]);
+        setIsLoading(false);
+        return;
+      }
+      
       const token = session?.access_token;
 
       const headers: Record<string, string> = {};
@@ -1114,9 +1125,15 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ userId }) => {
       if (response.ok) {
         setDocuments(data.documents || []);
       } else {
-        setError(data.error);
+        if (response.status === 401) {
+          console.warn("Unauthorized when fetching documents, session may have expired");
+          setDocuments([]);
+        } else {
+          setError(data.error);
+        }
       }
     } catch (err) {
+      console.error("Failed to load documents:", err);
       setError("Failed to load documents");
     } finally {
       setIsLoading(false);

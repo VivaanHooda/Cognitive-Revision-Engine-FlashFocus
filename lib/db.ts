@@ -17,6 +17,15 @@ async function safeFetch(path: string, opts: RequestInit = {}) {
 
     const res = await fetch(path, { ...opts, credentials: "include", headers });
 
+    // If unauthorized, clear session and return to login
+    if (res.status === 401 && typeof window !== "undefined") {
+      console.warn("Session expired, redirecting to login...");
+      await supabase.auth.signOut();
+      // Instead of hard reload, let the auth state listener handle it
+      // This prevents infinite loops
+      throw new Error("Session expired");
+    }
+
     const text = await res.text();
     try {
       const json = JSON.parse(text);
@@ -34,6 +43,14 @@ async function safeFetch(path: string, opts: RequestInit = {}) {
     // If token retrieval fails, fall back to request without Authorization
     const res = await fetch(path, { ...opts, credentials: "include" });
     const text = await res.text();
+    
+    // If unauthorized, clear session and return to login
+    if (res.status === 401 && typeof window !== "undefined") {
+      console.warn("No valid session, redirecting to login...");
+      await supabase.auth.signOut();
+      throw new Error("Not authenticated");
+    }
+    
     try {
       const json = JSON.parse(text);
       if (!res.ok) throw new Error(json?.error || text || res.statusText);
@@ -58,14 +75,40 @@ export const db = {
   // Seed initial decks for a new user if they have none
   async init(userId: string): Promise<void> {
     if (typeof window === "undefined") return;
-    const decks = await this.getDecks(userId);
-    if (!decks || decks.length === 0) {
-      // Insert initial decks into Supabase
-      const toInsert = INITIAL_DECKS.map((d) => ({ ...d, userId }));
-      await safeFetch("/api/decks", {
-        method: "POST",
-        body: JSON.stringify(toInsert),
-      });
+    
+    try {
+      // Check if session is available before proceeding
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn("No session available, skipping deck initialization");
+        return;
+      }
+      
+      const decks = await this.getDecks(userId);
+      if (!decks || decks.length === 0) {
+        console.log("No decks found, creating initial decks...");
+        // Insert initial decks into Supabase - map to correct field names
+        const toInsert = INITIAL_DECKS.map((d) => ({
+          id: d.id,
+          title: d.title,
+          description: d.description,
+          parentTopic: d.parentTopic,
+          cards: d.cards,
+          lastStudied: d.lastStudied,
+        }));
+        await safeFetch("/api/decks", {
+          method: "POST",
+          body: JSON.stringify(toInsert),
+        });
+        console.log("Initial decks created successfully");
+      }
+    } catch (error) {
+      // Don't block app startup if initial deck creation fails
+      console.warn("Failed to initialize decks (non-fatal):", error);
+      // Rethrow only if it's a critical auth error that should stop the flow
+      if (error instanceof Error && error.message === "Not authenticated") {
+        throw error;
+      }
     }
     return;
   },

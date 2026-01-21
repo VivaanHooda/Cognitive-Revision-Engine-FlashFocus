@@ -7,7 +7,7 @@
 -- 1. Enable pgvector Extension
 -- Note: This requires the extension to be enabled in your Supabase project
 -- Go to Database → Extensions → Enable "vector"
-create extension if not exists vector with schema extensions;
+create extension if not exists vector with schema public;
 
 -- ============================================================================
 -- 2. Documents Table (Source of Truth for uploaded files)

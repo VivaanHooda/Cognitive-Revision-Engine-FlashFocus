@@ -73,6 +73,12 @@ export default function GraphPage() {
         if (!response.ok) throw new Error('Failed to load document');
         const data = await response.json();
         
+        console.log('📊 API Response:', data);
+        console.log('📊 Topic Tree:', data.topicTree);
+        console.log('📊 Nodes count:', data.topicTree?.nodes?.length);
+        console.log('📊 Edges count:', data.topicTree?.edges?.length);
+        console.log('📊 Edges:', data.topicTree?.edges);
+        
         // Check if graph exists
         if (!data.topicTree) {
           setError('This document does not have a knowledge graph yet. Please generate it first from the Documents page.');
@@ -86,12 +92,12 @@ export default function GraphPage() {
           topic_tree: data.topicTree,
         });
         
-        // Auto-expand root node
+        // Auto-expand only first 2 levels (root and direct children)
         if (data.topicTree?.nodes) {
-          const rootNode = data.topicTree.nodes.find((n: ConceptNode) => n.type === 'root');
-          if (rootNode) {
-            setExpandedNodes(new Set([rootNode.id]));
-          }
+          const level0And1Nodes = data.topicTree.nodes
+            .filter((n: ConceptNode) => n.level === 0 || n.level === 1)
+            .map((n: ConceptNode) => n.id);
+          setExpandedNodes(new Set(level0And1Nodes));
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load');
@@ -166,9 +172,11 @@ export default function GraphPage() {
 
   // Get all descendant node IDs
   const getDescendants = (nodeId: string, graph: ConceptGraph): string[] => {
+    // Normalize to underscore format to match edge IDs
+    const normalizedNodeId = nodeId.replace(/-/g, '_');
     const children = graph.edges
-      .filter(e => e.from === nodeId && e.relationship === 'contains')
-      .map(e => e.to);
+      .filter(e => e.from === normalizedNodeId && e.relationship === 'contains')
+      .map(e => e.to.replace(/_/g, '-')); // Convert back to hyphen format
     
     const descendants: string[] = [];
     children.forEach(childId => {
@@ -188,9 +196,10 @@ export default function GraphPage() {
     
     // Add direct children of expanded nodes
     expandedNodes.forEach(nodeId => {
+      const normalizedNodeId = nodeId.replace(/-/g, '_');
       graph.edges
-        .filter(e => e.from === nodeId && e.relationship === 'contains')
-        .forEach(e => visible.add(e.to));
+        .filter(e => e.from === normalizedNodeId && e.relationship === 'contains')
+        .forEach(e => visible.add(e.to.replace(/_/g, '-'))); // Convert to hyphen format
     });
     
     const visibleNodes = graph.nodes.filter(n => visible.has(n.id));
@@ -233,14 +242,32 @@ export default function GraphPage() {
   const positions = calculateLayout();
   
   // Get visible edges (only between visible nodes)
+  // IMPORTANT: Normalize IDs to handle hyphen/underscore mismatch
   const visibleNodeIds = new Set(visibleNodes.map(n => n.id));
-  const visibleEdges = graph.edges.filter(
-    e => visibleNodeIds.has(e.from) && visibleNodeIds.has(e.to)
+  const normalizedNodeIds = new Set(
+    visibleNodes.map(n => n.id.replace(/-/g, '_'))
   );
+  
+  const visibleEdges = graph.edges.filter(e => {
+    // Check both original and normalized formats
+    const hasFrom = visibleNodeIds.has(e.from) || normalizedNodeIds.has(e.from);
+    const hasTo = visibleNodeIds.has(e.to) || normalizedNodeIds.has(e.to);
+    return hasFrom && hasTo;
+  });
+  
+  console.log('🔍 Total nodes:', graph.nodes.length);
+  console.log('🔍 Total edges:', graph.edges.length);
+  console.log('🔍 Visible nodes:', visibleNodes.length);
+  console.log('🔍 Visible node IDs:', Array.from(visibleNodeIds));
+  console.log('🔍 Normalized node IDs:', Array.from(normalizedNodeIds));
+  console.log('🔍 Visible edges:', visibleEdges.length);
+  console.log('🔍 All edges:', graph.edges);
+  console.log('🔍 Visible edges detail:', visibleEdges);
 
   // Check if node has children
   const hasChildren = (nodeId: string) => {
-    return graph.edges.some(e => e.from === nodeId && e.relationship === 'contains');
+    const normalizedNodeId = nodeId.replace(/-/g, '_');
+    return graph.edges.some(e => e.from === normalizedNodeId && e.relationship === 'contains');
   };
 
   return (
@@ -264,6 +291,27 @@ export default function GraphPage() {
           </div>
           
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const allNodeIds = graph.nodes.map(n => n.id);
+                setExpandedNodes(new Set(allNodeIds));
+              }}
+              className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+              title="Expand All Nodes"
+            >
+              Expand All
+            </button>
+            <button
+              onClick={() => {
+                const rootNode = graph.nodes.find(n => n.type === 'root');
+                setExpandedNodes(new Set(rootNode ? [rootNode.id] : []));
+              }}
+              className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
+              title="Collapse All Nodes"
+            >
+              Collapse All
+            </button>
+            <div className="w-px h-6 bg-gray-300 mx-2"></div>
             <button
               onClick={() => setZoom(Math.max(0.5, zoom - 0.1))}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -380,8 +428,11 @@ export default function GraphPage() {
 
             {/* Render edges */}
             {visibleEdges.map((edge, idx) => {
-              const fromPos = positions[edge.from];
-              const toPos = positions[edge.to];
+              // Normalize edge IDs to match node IDs (replace underscores with hyphens)
+              const fromId = edge.from.replace(/_/g, '-');
+              const toId = edge.to.replace(/_/g, '-');
+              const fromPos = positions[fromId];
+              const toPos = positions[toId];
               if (!fromPos || !toPos) return null;
 
               const colors: Record<string, string> = {
@@ -391,7 +442,7 @@ export default function GraphPage() {
                 extends: '#a855f7',
               };
 
-              const isHighlighted = selectedNode === edge.from || selectedNode === edge.to;
+              const isHighlighted = selectedNode === fromId || selectedNode === toId;
 
               return (
                 <g key={idx}>

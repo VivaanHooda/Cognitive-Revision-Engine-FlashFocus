@@ -18,16 +18,6 @@ import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { embedBatchWithRetry, estimateTokens } from "./gemini.safe";
 import { supabaseAdmin } from "./supabase.server";
 
-// Dynamic import for pdf-parse (CommonJS module)
-// This is loaded lazily to avoid Next.js bundling issues
-let pdfParse: any = null;
-async function loadPdfParse() {
-  if (!pdfParse) {
-    pdfParse = (await import("pdf-parse")).default;
-  }
-  return pdfParse;
-}
-
 // ============================================================================
 // Configuration
 // ============================================================================
@@ -69,28 +59,37 @@ export interface ProcessingProgress {
 type ProgressCallback = (progress: ProcessingProgress) => void;
 
 // ============================================================================
-// Text Extraction
+// Text Extraction - Using pdf-parse (simpler, server-side focused)
 // ============================================================================
 
+// Dynamic import for pdf-parse
+let pdfParse: any = null;
+async function loadPdfParse() {
+  if (!pdfParse) {
+    pdfParse = (await import("pdf-parse")).default;
+  }
+  return pdfParse;
+}
+
 /**
- * Extract text content from a PDF buffer
+ * Extract text content from a PDF buffer using pdf-parse
  */
 async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   try {
     const parser = await loadPdfParse();
     const data = await parser(buffer);
     
-    if (!data || !data.text) {
-      throw new Error("PDF parser returned no text content");
+    const fullText = data.text;
+    
+    if (!fullText || fullText.trim().length === 0) {
+      throw new Error("PDF contains no extractable text");
     }
     
-    return data.text;
+    return fullText;
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : "Unknown error";
     console.error("[PDF Parser Error]:", errorMsg);
-    throw new Error(
-      `PDF parsing failed: ${errorMsg}`
-    );
+    throw new Error(`PDF parsing failed: ${errorMsg}`);
   }
 }
 
@@ -101,10 +100,10 @@ async function extractTextFromPDF(buffer: Buffer): Promise<string> {
 /**
  * Clean extracted text for better embedding quality
  * 
- * Why each step matters:
- * - Normalize whitespace: PDFs often have weird spacing from column layouts
- * - Remove excessive newlines: Page breaks create artificial separations
- * - Trim lines: Prevent leading/trailing spaces from affecting embeddings
+ * Improvements:
+ * - Normalize whitespace
+ * - Remove excessive newlines
+ * - Remove problematic characters that cause PostgreSQL issues
  */
 function cleanText(text: string): string {
   return text
@@ -114,9 +113,14 @@ function cleanText(text: string): string {
     .replace(/\n{3,}/g, "\n\n")
     // Remove carriage returns
     .replace(/\r/g, "")
+    // Remove null bytes and other problematic characters
+    .replace(/\0/g, "")
+    // Remove backslashes to avoid PostgreSQL escape sequence issues
+    .replace(/\\/g, "/")
     // Trim each line
     .split("\n")
     .map(line => line.trim())
+    .filter(line => line.length > 0) // Remove empty lines
     .join("\n")
     // Final trim
     .trim();
@@ -153,7 +157,7 @@ interface ChunkInsert {
   document_id: string;
   content: string;
   chunk_index: number;
-  embedding: string; // Postgres expects array as string like '[0.1, 0.2, ...]'
+  embedding: number[]; // Pass as array, not string
   token_count: number;
 }
 
@@ -169,8 +173,8 @@ async function storeChunks(
     document_id: documentId,
     content,
     chunk_index: index,
-    // Format embedding as Postgres vector literal
-    embedding: `[${embeddings[index].join(",")}]`,
+    // Pass embedding as array directly
+    embedding: embeddings[index],
     token_count: estimateTokens(content),
   }));
   

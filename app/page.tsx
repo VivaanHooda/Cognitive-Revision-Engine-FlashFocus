@@ -10,6 +10,7 @@ import { Auth } from "@/components/Auth";
 import { DocumentsView } from "@/components/DocumentsView";
 import { db } from "@/lib/db";
 import * as authClient from "@/lib/auth.client";
+import { supabase } from "@/lib/supabase.client";
 import {
   LayoutGrid,
   BarChart2,
@@ -30,11 +31,16 @@ export default function Home() {
   // Check for existing JWT session on mount (server-backed)
   useEffect(() => {
     const init = async () => {
-      const user = await authClient.me();
-      if (user) {
-        setCurrentUser(user);
-        setView(AppView.HOME);
-      } else {
+      try {
+        const user = await authClient.me();
+        if (user) {
+          setCurrentUser(user);
+          setView(AppView.HOME);
+        } else {
+          setView(AppView.AUTH);
+        }
+      } catch (error) {
+        console.error("Auth check failed:", error);
         setView(AppView.AUTH);
       }
     };
@@ -47,11 +53,31 @@ export default function Home() {
       const initData = async () => {
         setIsDataLoading(true);
         try {
-          await db.init(currentUser.id);
+          // Small delay to ensure Supabase session is fully propagated
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Verify session is available
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) {
+            console.warn("No session available after login, skipping deck init");
+            setDecks([]);
+            return;
+          }
+          
+          // Try to initialize decks (non-fatal if fails)
+          try {
+            await db.init(currentUser.id);
+          } catch (initError) {
+            console.warn("Failed to initialize decks, continuing anyway:", initError);
+          }
+          
+          // Load existing decks
           const data = await db.getDecks(currentUser.id);
-          setDecks(data);
+          setDecks(data || []);
         } catch (error) {
           console.error("Failed to load data:", error);
+          // Don't block the app if data loading fails
+          setDecks([]);
         } finally {
           setIsDataLoading(false);
         }
@@ -59,6 +85,7 @@ export default function Home() {
       initData();
     } else {
       setDecks([]);
+      setIsDataLoading(false);
     }
   }, [currentUser]);
 
@@ -68,10 +95,16 @@ export default function Home() {
   };
 
   const handleLogout = async () => {
-    await authClient.logout();
-    setCurrentUser(null);
-    setView(AppView.AUTH);
-    setActiveDeckId(null);
+    try {
+      await authClient.logout();
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      setCurrentUser(null);
+      setView(AppView.AUTH);
+      setActiveDeckId(null);
+      setDecks([]);
+    }
   };
 
   const handleSelectDeck = (deckId: string) => {
