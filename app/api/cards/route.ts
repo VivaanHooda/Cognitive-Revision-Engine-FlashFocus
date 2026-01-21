@@ -63,11 +63,11 @@ export async function POST(req: Request) {
     is_bookmarked: c.isBookmarked ?? false,
     bookmarked_at: c.bookmarkedAt ? new Date(c.bookmarkedAt) : null,
     meta: c.meta ?? {},
-  }));
+  })) as any[];
 
   const { data, error } = await supabaseAdmin
     .from("cards")
-    .insert(rows)
+    .insert(rows as any)
     .select();
   if (error)
     return NextResponse.json({ error: error.message }, { status: 500 });
