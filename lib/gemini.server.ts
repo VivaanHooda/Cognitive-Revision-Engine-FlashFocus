@@ -150,7 +150,7 @@ Inputs:
 - Correct Answer: "${correctAnswer}"
 - Student Answer: "${userAnswer}"
 
-Grading Criteria (apply ONLY if ≥ 100 words):
+Grading Criteria (apply ONLY if ≥ 50 words):
 Evaluate factual correctness, completeness, clarity, and alignment with the correct answer.
 
 Grading Scale (1–4):
@@ -163,7 +163,7 @@ Output:
 Return ONLY valid JSON in this exact format:
 {
   "grade": <integer 1–4>,
-  "feedback": "<brief, constructive feedback (1–2 sentences)>"
+  "feedback": "<constructive feedback (4–5 sentences)>"
 }
 
 `;
