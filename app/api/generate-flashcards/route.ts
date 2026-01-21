@@ -197,6 +197,9 @@ GOOD EXAMPLE (focused):
 Q: "What is the primary purpose of ${context.topic}?"
 ✅ Directly targets the specific topic for revision
 
+The question should expect an answer of atleast 100 words.
+The answer should be as descriptive as possible with atleast more than 300 words.
+
 OUTPUT FORMAT (strict JSON only, no markdown):
 {
   "flashcards": [
