@@ -10,7 +10,7 @@ import { Auth } from "@/components/Auth";
 import { DocumentsView } from "@/components/DocumentsView";
 import { db } from "@/lib/db";
 import * as authClient from "@/lib/auth.client";
-import { supabase } from "@/lib/supabase.client";
+import { createClient } from "@/lib/supabase.client";
 import {
   LayoutGrid,
   BarChart2,
@@ -57,6 +57,7 @@ export default function Home() {
           await new Promise(resolve => setTimeout(resolve, 100));
           
           // Verify session is available
+          const supabase = createClient();
           const { data: { session } } = await supabase.auth.getSession();
           if (!session) {
             console.warn("No session available after login, skipping deck init");

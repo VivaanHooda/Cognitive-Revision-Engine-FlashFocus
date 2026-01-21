@@ -1,69 +1,117 @@
-import { supabase } from "./supabase.client";
+"use client"
 
-async function safeUserFromSupabase() {
-  try {
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser();
-    if (error) return null;
-    if (!user) return null;
-    return {
-      id: user.id,
-      email: user.email || "",
-      name: (user.user_metadata as any)?.name || user.email || "",
-    };
-  } catch (e) {
-    return null;
+import { createClient } from "./supabase.client"
+
+export type User = {
+  id: string
+  email: string
+  name: string
+}
+
+/**
+ * Register a new user
+ */
+export async function register(
+  email: string,
+  password: string,
+  name?: string
+): Promise<User | null> {
+  const supabase = createClient()
+  
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        name: name || email.split('@')[0]
+      }
+    }
+  })
+
+  if (error) {
+    console.error('Registration error:', error)
+    throw new Error(error.message)
+  }
+
+  if (!data.user) {
+    throw new Error('No user returned from registration')
+  }
+
+  return {
+    id: data.user.id,
+    email: data.user.email || email,
+    name: data.user.user_metadata?.name || name || email.split('@')[0]
   }
 }
 
-export const register = async (
-  username: string,
-  password: string,
-  name?: string
-) => {
-  const { data, error } = await supabase.auth.signUp({
-    email: username,
-    password,
-    options: { data: { name } },
-  } as any);
-  if (error) throw new Error(error.message);
-  // If email confirmations are enabled, user may be null until confirmed.
-  const user = data.user;
-  return user
-    ? {
-        id: user.id,
-        email: user.email || "",
-        name: (user.user_metadata as any)?.name || user.email || "",
-      }
-    : null;
-};
+/**
+ * Login with email and password
+ */
+export async function login(
+  email: string,
+  password: string
+): Promise<User | null> {
+  const supabase = createClient()
 
-export const login = async (username: string, password: string) => {
-  const {
-    data: { session },
-    error,
-  } = await supabase.auth.signInWithPassword({ email: username, password });
-  if (error) throw new Error(error.message);
-  if (!session?.user) return null;
-  const user = session.user;
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password
+  })
+
+  if (error) {
+    console.error('Login error:', error)
+    throw new Error(error.message)
+  }
+
+  if (!data.session || !data.user) {
+    throw new Error('No session created')
+  }
+
+  return {
+    id: data.user.id,
+    email: data.user.email || email,
+    name: data.user.user_metadata?.name || email.split('@')[0]
+  }
+}
+
+/**
+ * Logout the current user
+ */
+export async function logout(): Promise<void> {
+  const supabase = createClient()
+  await supabase.auth.signOut()
+}
+
+/**
+ * Get the current user
+ */
+export async function me(): Promise<User | null> {
+  const supabase = createClient()
+  
+  const { data: { user }, error } = await supabase.auth.getUser()
+  
+  if (error || !user) {
+    return null
+  }
+
   return {
     id: user.id,
-    email: user.email || "",
-    name: (user.user_metadata as any)?.name || user.email || "",
-  };
-};
-
-export const logout = async () => {
-  await supabase.auth.signOut();
-  try {
-    await fetch("/api/auth/logout", { method: "POST" });
-  } catch (e) {
-    // ignore
+    email: user.email || '',
+    name: user.user_metadata?.name || user.email?.split('@')[0] || 'User'
   }
-};
+}
 
-export const me = async () => {
-  return await safeUserFromSupabase();
-};
+/**
+ * Get the current session
+ */
+export async function getSession() {
+  const supabase = createClient()
+  const { data: { session }, error } = await supabase.auth.getSession()
+  
+  if (error) {
+    console.error('Session error:', error)
+    return null
+  }
+  
+  return session
+}

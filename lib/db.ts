@@ -1,10 +1,10 @@
 import { Deck } from "./types";
-import { INITIAL_DECKS } from "./mockData";
-import { supabase } from "./supabase.client";
+import { createClient } from "./supabase.client";
 
 async function safeFetch(path: string, opts: RequestInit = {}) {
   // Attach Supabase access token if available so server can verify via Authorization header
   try {
+    const supabase = createClient();
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -46,6 +46,7 @@ async function safeFetch(path: string, opts: RequestInit = {}) {
     
     // If unauthorized, clear session and return to login
     if (res.status === 401 && typeof window !== "undefined") {
+      const supabase = createClient();
       console.warn("No valid session, redirecting to login...");
       await supabase.auth.signOut();
       throw new Error("Not authenticated");
@@ -72,39 +73,24 @@ export const db = {
     return `supabase-decks`;
   },
 
-  // Seed initial decks for a new user if they have none
+  // Initialize - no longer creates mock decks, just validates session
   async init(userId: string): Promise<void> {
     if (typeof window === "undefined") return;
     
     try {
       // Check if session is available before proceeding
+      const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        console.warn("No session available, skipping deck initialization");
+        console.warn("No session available, skipping initialization");
         return;
       }
       
-      const decks = await this.getDecks(userId);
-      if (!decks || decks.length === 0) {
-        console.log("No decks found, creating initial decks...");
-        // Insert initial decks into Supabase - map to correct field names
-        const toInsert = INITIAL_DECKS.map((d) => ({
-          id: d.id,
-          title: d.title,
-          description: d.description,
-          parentTopic: d.parentTopic,
-          cards: d.cards,
-          lastStudied: d.lastStudied,
-        }));
-        await safeFetch("/api/decks", {
-          method: "POST",
-          body: JSON.stringify(toInsert),
-        });
-        console.log("Initial decks created successfully");
-      }
+      // Just verify we can fetch decks - no longer creates initial decks
+      await this.getDecks(userId);
     } catch (error) {
-      // Don't block app startup if initial deck creation fails
-      console.warn("Failed to initialize decks (non-fatal):", error);
+      // Don't block app startup if deck fetch fails
+      console.warn("Failed to initialize (non-fatal):", error);
       // Rethrow only if it's a critical auth error that should stop the flow
       if (error instanceof Error && error.message === "Not authenticated") {
         throw error;

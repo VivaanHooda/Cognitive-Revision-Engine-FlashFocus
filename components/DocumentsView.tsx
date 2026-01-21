@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
-import { supabase } from "@/lib/supabase.client";
+import { createClient } from "@/lib/supabase.client";
 import {
   FileText,
   Upload,
@@ -732,8 +732,14 @@ const UploadModal: React.FC<UploadModalProps> = ({
       setUploadProgress("Processing document...");
 
       // Get Supabase access token for authentication
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
+      const supabase = createClient();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError || !session) {
+        throw new Error("Please log in again to upload documents.");
+      }
+      
+      const token = session.access_token;
 
       const headers: Record<string, string> = {};
       if (token) {
@@ -1100,6 +1106,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ userId }) => {
       await new Promise(resolve => setTimeout(resolve, 100));
       
       // Get auth token
+      const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session) {
@@ -1149,6 +1156,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ userId }) => {
     if (!doc.topic_tree) {
       try {
         // Get auth token
+        const supabase = createClient();
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
 
@@ -1186,6 +1194,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ userId }) => {
     setIsGeneratingTree(true);
     try {
       // Get auth token
+      const supabase = createClient();
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
 

@@ -1,7 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server'
+import { createServerSupabaseClient } from '@/lib/supabase.server'
 
 export async function POST() {
-  const res = NextResponse.json({ success: true });
-  res.cookies.set("token", "", { httpOnly: true, path: "/", maxAge: 0 });
-  return res;
+  try {
+    const supabase = await createServerSupabaseClient()
+    await supabase.auth.signOut()
+    
+    return NextResponse.json({ success: true })
+  } catch (err: any) {
+    console.error('Logout error:', err)
+    return NextResponse.json(
+      { error: err.message || 'Internal server error' },
+      { status: 500 }
+    )
+  }
 }

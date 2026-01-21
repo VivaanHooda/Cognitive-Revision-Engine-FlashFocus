@@ -35,8 +35,8 @@ const CONFIG = {
 
 // Admin client for storage operations (bypasses RLS)
 const getAdminClient = () => {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   
   if (!url || !key) {
     throw new Error("Missing Supabase configuration");
@@ -49,7 +49,7 @@ const getAdminClient = () => {
 
 // User client for RLS-protected operations
 const getUserClient = (accessToken: string) => {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   
   if (!url || !key) {
@@ -85,27 +85,34 @@ function getAccessToken(request: NextRequest): string | null {
   const cookies = request.cookies.getAll();
   console.log("[API] Available cookies:", cookies.map(c => c.name).join(", "));
   
-  // Supabase stores session in localStorage on client, not cookies by default
-  // The client should send the token via Authorization header
-  // Let's check for any sb- cookies just in case
+  // Supabase stores auth tokens in cookies with base64-encoded JSON
   for (const cookie of cookies) {
-    if (cookie.name.startsWith('sb-') && cookie.name.includes('auth')) {
+    if (cookie.name.startsWith('sb-') && cookie.name.includes('auth-token')) {
       console.log("[API] Found Supabase cookie:", cookie.name, "value length:", cookie.value.length);
       try {
-        // Try parsing as JSON first
-        const parsed = JSON.parse(cookie.value);
-        if (parsed?.access_token) {
-          console.log("[API] Extracted access_token from JSON cookie");
-          return parsed.access_token;
+        // Decode base64 if needed
+        let parsed = cookie.value;
+        
+        // Check if it looks like base64
+        if (cookie.value.length > 100 && !cookie.value.startsWith('{')) {
+          try {
+            const decoded = Buffer.from(cookie.value, 'base64').toString('utf-8');
+            parsed = decoded;
+            console.log("[API] Decoded base64 cookie");
+          } catch (e) {
+            // Not base64, use as-is
+          }
         }
-        if (typeof parsed === 'string') {
-          console.log("[API] Cookie contains string token");
-          return parsed;
+        
+        // Try parsing as JSON
+        const json = JSON.parse(parsed);
+        if (json?.access_token) {
+          console.log("[API] Extracted access_token from cookie JSON");
+          return json.access_token;
         }
       } catch (e) {
-        // Not JSON, might be the token directly
-        console.log("[API] Cookie is not JSON, using as-is");
-        return cookie.value;
+        console.log("[API] Failed to parse cookie:", e);
+        // Don't use malformed cookie values
       }
     }
   }
@@ -146,8 +153,9 @@ export async function POST(request: NextRequest) {
     
     if (authError || !user) {
       console.error("[API] Auth error:", authError?.message || "No user found");
+      console.error("[API] This usually means the session has expired. User should log out and log back in.");
       return NextResponse.json(
-        { error: "Unauthorized - Invalid token. Please log in again." },
+        { error: "Session expired. Please log out and log back in." },
         { status: 401 }
       );
     }

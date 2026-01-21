@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, Download, Loader2 } from "lucide-react";
-import { supabase } from "@/lib/supabase.client";
+import { createClient } from "@/lib/supabase.client";
 
 // ============================================================================
 // Types
@@ -50,6 +50,10 @@ export default function GraphPage() {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [generatingFlashcards, setGeneratingFlashcards] = useState<string | null>(null);
+  const [flashcards, setFlashcards] = useState<Array<{question: string; answer: string; difficulty?: string; hint?: string}> | null>(null);
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [isFlipped, setIsFlipped] = useState(false);
   const svgRef = React.useRef<SVGSVGElement>(null);
 
   // Fetch document data
@@ -57,6 +61,7 @@ export default function GraphPage() {
     async function fetchDocument() {
       try {
         // Get Supabase access token for authentication
+        const supabase = createClient();
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
 
@@ -268,6 +273,46 @@ export default function GraphPage() {
     return graph.edges.some(e => e.from === normalizedNodeId && e.relationship === 'contains');
   };
 
+  // Generate flashcards from node
+  const handleGenerateFlashcards = async (node: ConceptNode) => {
+    setGeneratingFlashcards(node.id);
+    
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const response = await fetch('/api/generate-flashcards', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          documentId: documentId,
+          topicLabel: node.label,
+          topicDescription: node.description || node.label,
+          cardCount: 8
+        })
+      });
+      
+      if (!response.ok) throw new Error('Failed to generate flashcards');
+      const data = await response.json();
+      
+      if (data.flashcards && data.flashcards.length > 0) {
+        setFlashcards(data.flashcards);
+        setCurrentCardIndex(0);
+        setIsFlipped(false);
+      } else {
+        alert('⚠️ No flashcards generated. Try selecting a different topic.');
+      }
+    } catch (err) {
+      alert('❌ Failed to generate flashcards. Please try again.');
+      console.error('Flashcard generation error:', err);
+    } finally {
+      setGeneratingFlashcards(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       {/* Header */}
@@ -289,6 +334,32 @@ export default function GraphPage() {
           </div>
           
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                if (!selectedNode) {
+                  alert('Please select a node first by clicking on it in the graph.');
+                  return;
+                }
+                const node = graph.nodes.find(n => n.id === selectedNode);
+                if (node) handleGenerateFlashcards(node);
+              }}
+              disabled={generatingFlashcards !== null}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
+              title="Generate flashcards for selected topic"
+            >
+              {generatingFlashcards ? (
+                <>
+                  <span className="animate-spin">⏳</span>
+                  <span>Generating...</span>
+                </>
+              ) : (
+                <>
+                  <span>🎴</span>
+                  <span>Generate Flashcards</span>
+                </>
+              )}
+            </button>
+            <div className="w-px h-6 bg-gray-300 mx-2"></div>
             <button
               onClick={() => {
                 const allNodeIds = graph.nodes.map(n => n.id);
@@ -527,7 +598,7 @@ export default function GraphPage() {
                     stroke={color.stroke}
                     strokeWidth={isSelected ? 4 : 2}
                     className="cursor-pointer transition-all duration-300 hover:opacity-90"
-                    onClick={() => {
+                    onClick={(e) => {
                       setSelectedNode(isSelected ? null : node.id);
                       // Only toggle if not root and has children
                       if (nodeHasChildren && node.type !== 'root') {
@@ -645,11 +716,126 @@ export default function GraphPage() {
               <span>Extends</span>
             </div>
             <div className="ml-4 text-gray-500">
-              Click nodes with + to expand · Click again to collapse
+              Select a node · Click "Generate Flashcards" button · + to expand
             </div>
           </div>
         </div>
       </div>
+
+      {/* Flashcard Viewer Modal */}
+      {flashcards && flashcards.length > 0 && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-8">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Generated Flashcards</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  Card {currentCardIndex + 1} of {flashcards.length}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setFlashcards(null);
+                  setCurrentCardIndex(0);
+                  setIsFlipped(false);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <span className="text-2xl text-gray-600">×</span>
+              </button>
+            </div>
+
+            {/* Flashcard */}
+            <div 
+              className="relative bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-8 min-h-[300px] flex items-center justify-center cursor-pointer border-2 border-indigo-200 hover:border-indigo-300 transition-all"
+              onClick={() => setIsFlipped(!isFlipped)}
+            >
+              <div className="text-center">
+                {!isFlipped ? (
+                  <>
+                    <div className="text-sm font-semibold text-indigo-600 mb-4">QUESTION</div>
+                    <p className="text-xl text-gray-900 leading-relaxed">
+                      {flashcards[currentCardIndex].question}
+                    </p>
+                    {flashcards[currentCardIndex].hint && (
+                      <div className="mt-6 p-4 bg-white bg-opacity-60 rounded-lg">
+                        <p className="text-sm text-gray-600">
+                          💡 <span className="font-medium">Hint:</span> {flashcards[currentCardIndex].hint}
+                        </p>
+                      </div>
+                    )}
+                    <p className="text-sm text-gray-500 mt-6">Click to reveal answer</p>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-sm font-semibold text-purple-600 mb-4">ANSWER</div>
+                    <p className="text-lg text-gray-900 leading-relaxed whitespace-pre-wrap">
+                      {flashcards[currentCardIndex].answer}
+                    </p>
+                    {flashcards[currentCardIndex].difficulty && (
+                      <div className="mt-6">
+                        <span className="inline-block px-3 py-1 bg-white bg-opacity-60 rounded-full text-sm text-gray-700">
+                          Difficulty: {flashcards[currentCardIndex].difficulty}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Navigation */}
+            <div className="flex items-center justify-between mt-6">
+              <button
+                onClick={() => {
+                  setCurrentCardIndex(Math.max(0, currentCardIndex - 1));
+                  setIsFlipped(false);
+                }}
+                disabled={currentCardIndex === 0}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 disabled:text-gray-400 text-gray-700 rounded-lg transition-colors font-medium"
+              >
+                ← Previous
+              </button>
+              
+              <div className="flex gap-2">
+                {flashcards.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setCurrentCardIndex(idx);
+                      setIsFlipped(false);
+                    }}
+                    className={`w-2 h-2 rounded-full transition-all ${
+                      idx === currentCardIndex 
+                        ? 'bg-indigo-600 w-8' 
+                        : 'bg-gray-300 hover:bg-gray-400'
+                    }`}
+                  />
+                ))}
+              </div>
+
+              <button
+                onClick={() => {
+                  setCurrentCardIndex(Math.min(flashcards.length - 1, currentCardIndex + 1));
+                  setIsFlipped(false);
+                }}
+                disabled={currentCardIndex === flashcards.length - 1}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 disabled:text-gray-400 text-gray-700 rounded-lg transition-colors font-medium"
+              >
+                Next →
+              </button>
+            </div>
+
+            {/* Actions */}
+            <div className="mt-6 pt-6 border-t border-gray-200 flex justify-center">
+              <p className="text-sm text-gray-600">
+                ✅ Flashcards saved! Go to <a href="/" className="text-indigo-600 hover:text-indigo-700 font-medium">Study page</a> to review with spaced repetition.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

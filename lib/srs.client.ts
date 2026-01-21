@@ -1,8 +1,9 @@
 import { FlashcardData, StudyGrade } from "./types";
-import { supabase } from "./supabase.client";
+import { createClient } from "./supabase.client";
 
 async function getAuthHeader(): Promise<Record<string, string>> {
   try {
+    const supabase = createClient();
     const {
       data: { session },
     } = await supabase.auth.getSession();

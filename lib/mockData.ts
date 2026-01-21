@@ -1,12 +1,13 @@
 
 import { Deck } from './types';
+import { v4 as uuidv4 } from 'uuid';
 
 const now = Date.now();
 const day = 86400000;
 
 export const INITIAL_DECKS: Deck[] = [
   {
-    id: 'deck-1',
+    id: uuidv4(),
     title: 'Basic Phrases',
     description: 'Essential phrases and vocabulary for beginners.',
     parentTopic: 'Spanish Language',

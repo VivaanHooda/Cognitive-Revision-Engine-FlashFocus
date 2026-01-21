@@ -13,7 +13,7 @@ export interface GradingResult {
   feedback: string;
 }
 
-import { supabase } from "./supabase.client";
+import { createClient } from "./supabase.client";
 
 // Client wrappers that call server API routes. Signatures kept compatible with previous code.
 async function parseJsonOrText(res: Response) {
