@@ -150,7 +150,7 @@ Inputs:
 - Correct Answer: "${correctAnswer}"
 - Student Answer: "${userAnswer}"
 
-Grading Criteria (apply ONLY if ≥ 50 words):
+Grading Criteria (apply ONLY if ≥ 100 words):
 Evaluate factual correctness, completeness, clarity, and alignment with the correct answer.
 
 Grading Scale (1–4):
