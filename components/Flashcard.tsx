@@ -14,7 +14,7 @@ export const Flashcard: React.FC<FlashcardProps> = ({
   isFlipped,
 }) => {
   return (
-    <div className="group w-full max-w-xl [perspective:1000px] cursor-default">
+    <div className="group w-full max-w-4xl [perspective:1000px] cursor-default">
       <div
         className={`relative w-full transition-transform duration-500 transform-style-3d shadow-xl rounded-2xl ${
           isFlipped ? "rotate-y-180" : ""
@@ -30,7 +30,7 @@ export const Flashcard: React.FC<FlashcardProps> = ({
           <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-4">
             Question
           </span>
-          <h2 className="text-3xl font-bold text-gray-800 text-center leading-relaxed whitespace-pre-wrap break-words w-full">
+          <h2 className="text-2xl font-bold text-gray-800 text-justify leading-relaxed whitespace-pre-wrap break-words w-full">
             {front}
           </h2>
         </div>
@@ -45,7 +45,7 @@ export const Flashcard: React.FC<FlashcardProps> = ({
           <span className="text-xs font-semibold text-indigo-400 uppercase tracking-widest mb-4">
             Answer
           </span>
-          <h2 className="text-3xl font-bold text-indigo-900 text-center leading-relaxed whitespace-pre-wrap break-words w-full">
+          <h2 className="text-xl font-bold text-justify text-indigo-900 leading-relaxed whitespace-pre-wrap break-words w-full">
             {back}
           </h2>
         </div>
