@@ -106,7 +106,7 @@ export async function PUT(req: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("cards")
-    .update(payload)
+    .update(payload as any)
     .eq("id", id)
     .eq("user_id", user.id)
     .select();
