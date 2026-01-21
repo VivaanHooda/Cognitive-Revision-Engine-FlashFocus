@@ -12,8 +12,7 @@ export async function GET(req: Request) {
     .from("srs_params")
     .select("params")
     .eq("user_id", user.id)
-    .single()
-    .maybeSingle();
+    .maybeSingle() as { data: { params: any } | null; error: any };
   if (error)
     return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -33,7 +32,7 @@ export async function PUT(req: Request) {
   // upsert (use onConflict to avoid duplicate rows)
   const { data, error } = await supabaseAdmin
     .from("srs_params")
-    .upsert({ user_id: user.id, params }, { onConflict: "user_id" })
+    .upsert({ user_id: user.id, params } as any, { onConflict: "user_id" })
     .select()
     .single();
   if (error)

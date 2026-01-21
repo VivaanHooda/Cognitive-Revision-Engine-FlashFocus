@@ -327,7 +327,7 @@ export async function POST(request: NextRequest) {
       
       const { data: newDeck, error: newDeckError } = await (supabaseAdmin
         .from("decks")
-        .insert(insertData)
+        .insert(insertData as any)
         .select("id")
         .single()) as { data: { id: string } | null; error: any };
 

@@ -21,9 +21,8 @@ export async function POST(req: Request) {
     const { data: paramsRow } = await supabaseAdmin
       .from("srs_params")
       .select("params")
-      .eq("user_id", user?.id || null)
-      .single()
-      .maybeSingle();
+      .eq("user_id", user?.id ?? "")
+      .maybeSingle() as { data: { params: any } | null };
     const params = paramsRow?.params;
 
     const out: Record<

@@ -185,7 +185,7 @@ async function storeChunks(
     
     const { error } = await supabaseAdmin
       .from("document_chunks")
-      .insert(batch);
+      .insert(batch as any);
     
     if (error) {
       throw new Error(`Failed to insert chunks: ${error.message}`);
@@ -206,7 +206,8 @@ async function updateDocumentStatus(
 ): Promise<void> {
   const { error } = await supabaseAdmin
     .from("documents")
-    .update(status)
+    // @ts-expect-error - Supabase types not updated for new columns yet
+    .update(status as any)
     .eq("id", documentId);
   
   if (error) {

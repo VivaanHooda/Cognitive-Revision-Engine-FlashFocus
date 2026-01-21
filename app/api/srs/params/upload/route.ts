@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     // Upsert params for this user (avoid creating duplicate rows by using onConflict)
     const { data, error } = await supabaseAdmin
       .from("srs_params")
-      .upsert({ user_id: user.id, params }, { onConflict: "user_id" })
+      .upsert({ user_id: user.id, params } as any, { onConflict: "user_id" })
       .select()
       .single();
 

@@ -39,7 +39,7 @@ export default function Home() {
     let authCheckComplete = false;
     
     // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: any, session: any) => {
       console.log('[Auth State Change]', event, session?.user?.id);
       
       // Only respond to INITIAL_SESSION to avoid duplicate fetches
@@ -128,7 +128,7 @@ export default function Home() {
         
         // Verify session is still valid and has an access token
         const supabase = createClient();
-        let session = null;
+        let session: any = null;
         let attempts = 0;
         
         // Retry getting session with token up to 3 times

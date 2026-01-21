@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
       .from("documents")
       .select("id, user_id, title, topic_tree")
       .eq("id", documentId)
-      .single();
+      .single() as { data: any; error: any };
     
     if (docError || !document || document.user_id !== user.id) {
       return NextResponse.json({ error: "Document not found" }, { status: 404 });
@@ -163,8 +163,8 @@ export async function POST(request: NextRequest) {
         match_threshold: 0.5, // Lower threshold for broader matches
         match_count: limit,
         filter_document_id: documentId,
-      }
-    );
+      } as any
+    ) as { data: any[] | null; error: any };
     
     if (searchError) {
       console.error("[API] Semantic search error:", searchError);
@@ -178,7 +178,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       topic: topicLabel,
-      chunks: chunks.map((chunk: any) => ({
+      chunks: (chunks || []).map((chunk: any) => ({
         id: chunk.id,
         content: chunk.content,
         similarity: chunk.similarity,

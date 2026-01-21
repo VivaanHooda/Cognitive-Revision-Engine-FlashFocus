@@ -90,16 +90,6 @@ export const Timeline: React.FC<TimelineProps> = ({ decks }) => {
     return g;
   }, [allCards]);
 
-  // Calculate summary stats
-  const stats = useMemo(() => {
-    const totalScheduled = days.reduce((sum, day) => sum + (grouped[day.key]?.length || 0), 0);
-    const todayCards = days.filter(d => isToday(d.date)).reduce((sum, day) => sum + (grouped[day.key]?.length || 0), 0);
-    const overdueCards = days.filter(d => isPast(d.date)).reduce((sum, day) => sum + (grouped[day.key]?.length || 0), 0);
-    const peakDay = days.reduce((max, day) => {
-      const count = grouped[day.key]?.length || 0;
-      return count > (grouped[max.key]?.length || 0) ? day : max;
-    }, days[0]);
-    
   // Handle deck moving
   const handleMoveDeck = async () => {
     if (!movingDeck || !selectedTargetDate) return;
@@ -135,6 +125,16 @@ export const Timeline: React.FC<TimelineProps> = ({ decks }) => {
     }
   };
 
+  // Calculate summary stats
+  const stats = useMemo(() => {
+    const totalScheduled = days.reduce((sum, day) => sum + (grouped[day.key]?.length || 0), 0);
+    const todayCards = days.filter(d => isToday(d.date)).reduce((sum, day) => sum + (grouped[day.key]?.length || 0), 0);
+    const overdueCards = days.filter(d => isPast(d.date)).reduce((sum, day) => sum + (grouped[day.key]?.length || 0), 0);
+    const peakDay = days.reduce((max, day) => {
+      const count = grouped[day.key]?.length || 0;
+      return count > (grouped[max.key]?.length || 0) ? day : max;
+    }, days[0]);
+    
     return { totalScheduled, todayCards, overdueCards, peakDay };
   }, [days, grouped]);
 

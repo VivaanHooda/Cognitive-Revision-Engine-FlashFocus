@@ -231,7 +231,7 @@ export async function POST(request: NextRequest) {
         file_size: file.size,
         mime_type: file.type,
         is_processed: false,
-      })
+      } as any)
       .select("id")
       .single();
     

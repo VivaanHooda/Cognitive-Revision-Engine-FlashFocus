@@ -122,6 +122,7 @@ async function parseJsonOrText(res: Response) {
 
 async function getAuthHeader(): Promise<Record<string, string>> {
   try {
+    const supabase = createClient();
     const {
       data: { session },
     } = await supabase.auth.getSession();

@@ -74,11 +74,11 @@ export async function POST(req: Request) {
     // Keep deck.cards for backwards-compat but we'll also insert them into cards table
     cards: deck.cards || [],
     last_studied: deck.lastStudied ? new Date(deck.lastStudied) : null,
-  }));
+  })) as any[];
 
   const { data, error } = await supabaseAdmin
     .from("decks")
-    .insert(rows)
+    .insert(rows as any)
     .select();
 
   if (error)
@@ -113,7 +113,7 @@ export async function POST(req: Request) {
     if (insertRows.length > 0) {
       const { data: cardsData, error: cardsErr } = await supabaseAdmin
         .from("cards")
-        .insert(insertRows)
+        .insert(insertRows as any)
         .select();
       if (cardsErr) {
         // Log but do not fail the whole request
@@ -121,7 +121,7 @@ export async function POST(req: Request) {
       } else {
         // Attach inserted cards back to decks in the response
         const cardsByDeck: Record<string, any[]> = {};
-        for (const c of cardsData || []) {
+        for (const c of (cardsData || []) as any[]) {
           cardsByDeck[c.deck_id] = cardsByDeck[c.deck_id] || [];
           cardsByDeck[c.deck_id].push(c);
         }
@@ -165,6 +165,7 @@ export async function PUT(req: Request) {
   // Update deck metadata
   const { data: deckData, error: deckErr } = await supabaseAdmin
     .from("decks")
+    // @ts-expect-error - Supabase types not updated for new columns yet
     .update(payload)
     .eq("id", id)
     .eq("user_id", user.id)
@@ -219,6 +220,7 @@ export async function PUT(req: Request) {
 
           await supabaseAdmin
             .from("cards")
+            // @ts-expect-error - Supabase types not updated for new columns yet
             .update(payloadCard)
             .eq("id", c.id)
             .eq("user_id", user.id);
@@ -228,7 +230,7 @@ export async function PUT(req: Request) {
       if (toInsert.length > 0) {
         const { error: insertErr } = await supabaseAdmin
           .from("cards")
-          .insert(toInsert);
+          .insert(toInsert as any);
         if (insertErr)
           console.error("Failed to insert cards on deck update:", insertErr);
       }

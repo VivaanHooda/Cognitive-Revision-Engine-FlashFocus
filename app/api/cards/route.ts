@@ -106,7 +106,8 @@ export async function PUT(req: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("cards")
-    .update(payload as any)
+    // @ts-expect-error - Supabase types not updated for new columns yet
+    .update(payload)
     .eq("id", id)
     .eq("user_id", user.id)
     .select();

@@ -25,8 +25,7 @@ export async function POST(req: Request) {
       .from("srs_params")
       .select("params")
       .eq("user_id", user.id)
-      .single()
-      .maybeSingle();
+      .maybeSingle() as { data: { params: any } | null };
 
     // Use stored params or defaults and run calculation
     const params =
@@ -48,7 +47,7 @@ export async function POST(req: Request) {
       const { supabaseAdmin } = await import("@/lib/supabase.server");
       const { data: upserted, error: upsertErr } = await supabaseAdmin
         .from("srs_params")
-        .upsert({ user_id: user.id, params }, { onConflict: "user_id" })
+        .upsert({ user_id: user.id, params } as any, { onConflict: "user_id" })
         .select()
         .single();
       if (upsertErr) console.error("Failed to persist SRS params:", upsertErr);
