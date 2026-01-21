@@ -294,7 +294,52 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Document not found" }, { status: 404 });
     }
     
-    // 4. Get relevant content via semantic search
+    // 4. Find or create a deck for this document
+    // Use a consistent naming convention for auto-generated decks from documents
+    const deckTitle = `📄 ${document.title}`;
+    
+    const { data: existingDeck, error: deckError } = await supabaseAdmin
+      .from("decks")
+      .select("id")
+      .eq("title", deckTitle)
+      .eq("user_id", user.id)
+      .maybeSingle() as { data: { id: string } | null; error: any };
+
+    let deckId: string;
+
+    if (deckError) {
+      console.error("[API] Error finding deck:", deckError);
+      return NextResponse.json({ error: "Failed to find deck" }, { status: 500 });
+    }
+
+    if (existingDeck) {
+      deckId = existingDeck.id;
+      console.log(`[API] Using existing deck: ${deckId}`);
+    } else {
+      // No deck exists, create one for this document
+      const insertData: any = {
+        user_id: user.id,
+        title: deckTitle,
+        description: `Flashcards generated from document: ${document.title}`,
+        parent_topic: null,
+        cards: [],
+      };
+      
+      const { data: newDeck, error: newDeckError } = await (supabaseAdmin
+        .from("decks")
+        .insert(insertData)
+        .select("id")
+        .single()) as { data: { id: string } | null; error: any };
+
+      if (newDeckError || !newDeck) {
+        console.error("[API] Error creating deck:", newDeckError);
+        return NextResponse.json({ error: "Failed to create deck" }, { status: 500 });
+      }
+      deckId = newDeck.id;
+      console.log(`[API] Created new deck: ${deckId} for document: ${document.title}`);
+    }
+
+    // 5. Get relevant content via semantic search
     const searchQuery = topicDescription 
       ? `${topicLabel}: ${topicDescription}`
       : topicLabel;
@@ -322,7 +367,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // 5. Combine top chunks into context
+    // 6. Combine top chunks into context
     const combinedContent = chunks
       .slice(0, 5) // Top 5 most relevant
       .map((chunk: any) => chunk.content)
@@ -330,7 +375,7 @@ export async function POST(request: NextRequest) {
     
     console.log(`[API] Using ${chunks.length} chunks, combined length: ${combinedContent.length}`);
     
-    // 6. Extract topic hierarchy from document's topic_tree
+    // 7. Extract topic hierarchy from document's topic_tree
     const topicContext = await extractTopicContext(
       supabaseAdmin,
       documentId,
@@ -341,7 +386,7 @@ export async function POST(request: NextRequest) {
     
     console.log(`[API] Topic context:`, topicContext);
     
-    // 7. Generate flashcards with Gemini using full context
+    // 8. Generate flashcards with Gemini using full context
     const prompt = buildFlashcardPrompt(topicContext, combinedContent, cardCount);
     
     let result: { flashcards: Flashcard[] };
@@ -360,7 +405,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // 8. Validate generated flashcards
+    // 9. Validate generated flashcards
     if (!result.flashcards || result.flashcards.length === 0) {
       return NextResponse.json(
         { error: "No flashcards generated" },
@@ -368,9 +413,10 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // 9. Save flashcards to database
+    // 10. Save flashcards to database
     const cardsToInsert = result.flashcards.map(card => ({
       user_id: user.id,
+      deck_id: deckId, // <-- ADDED DECK ID
       document_id: documentId,
       topic_id: topicId,
       topic_label: topicLabel,
@@ -409,14 +455,14 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // 10. Return saved cards with IDs
+    // 11. Return saved cards with IDs
     return NextResponse.json({
       success: true,
       topic: topicLabel,
       flashcards: savedCards.map((card: any) => ({
         id: card.id,
-        front: card.front,
-        back: card.back,
+        question: card.front, // Standardize to 'question' for the frontend
+        answer: card.back,
         difficulty: card.card_difficulty,
         hint: card.hint,
         topic: card.topic_label,
