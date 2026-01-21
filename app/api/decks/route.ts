@@ -1,12 +1,26 @@
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase.server";
 import { getUserFromRequest } from "@/lib/auth.server";
 
-export async function GET(req: Request) {
+// Disable caching for this route
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const runtime = 'nodejs';
+export const fetchCache = 'force-no-store';
+
+export async function GET(req: NextRequest) {
+  console.log('[api/decks] GET request received');
+  console.log('[api/decks] Authorization header:', req.headers.get('Authorization')?.substring(0, 20) + '...');
+  
   const user = await getUserFromRequest(req);
   // Allow unauthenticated GET requests and return an empty list rather than 401 so
   // client-side code (e.g., init) can proceed without throwing.
-  if (!user) return NextResponse.json([]);
+  if (!user) {
+    console.log('[api/decks] No authenticated user found, returning empty array');
+    return NextResponse.json([]);
+  }
+  
+  console.log('[api/decks] Fetching decks for user:', user.id);
 
   const { data, error } = await supabaseAdmin
     .from("decks")
@@ -17,7 +31,15 @@ export async function GET(req: Request) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json(data ?? []);
+  
+  // Return with no-cache headers
+  return NextResponse.json(data ?? [], {
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    },
+  });
 }
 
 export async function POST(req: Request) {

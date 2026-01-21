@@ -2,10 +2,17 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase.server";
 import { getUserFromRequest } from "@/lib/auth.server";
 
+// Disable caching for this route
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(req: Request) {
   const user = await getUserFromRequest(req);
   // Allow unauthenticated reads: return an empty list rather than 401 so client code doesn't throw
-  if (!user) return NextResponse.json([]);
+  if (!user) {
+    console.log('[api/cards] No authenticated user found');
+    return NextResponse.json([]);
+  }
 
   const url = new URL(req.url);
   const deckId = url.searchParams.get("deckId");
@@ -23,7 +30,13 @@ export async function GET(req: Request) {
   if (error)
     return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json(data ?? []);
+  return NextResponse.json(data ?? [], {
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    },
+  });
 }
 
 export async function POST(req: Request) {

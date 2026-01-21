@@ -2,6 +2,11 @@ import { Deck } from "./types";
 import { createClient } from "./supabase.client";
 
 async function safeFetch(path: string, opts: RequestInit = {}) {
+  // Add cache-busting timestamp to URL
+  const url = new URL(path, window.location.origin);
+  url.searchParams.set('_t', Date.now().toString());
+  const cacheBustedPath = url.pathname + url.search;
+  
   // Attach Supabase access token if available so server can verify via Authorization header
   try {
     const supabase = createClient();
@@ -13,9 +18,14 @@ async function safeFetch(path: string, opts: RequestInit = {}) {
       "Content-Type": "application/json",
       ...(opts.headers as Record<string, string> | undefined),
     };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+      console.log(`[safeFetch] Making request to ${cacheBustedPath} with auth token`);
+    } else {
+      console.warn(`[safeFetch] No auth token available for ${cacheBustedPath}`);
+    }
 
-    const res = await fetch(path, { ...opts, credentials: "include", headers });
+    const res = await fetch(cacheBustedPath, { ...opts, credentials: "include", headers, cache: 'no-store' });
 
     // If unauthorized, clear session and return to login
     if (res.status === 401 && typeof window !== "undefined") {
@@ -41,7 +51,12 @@ async function safeFetch(path: string, opts: RequestInit = {}) {
     }
   } catch (e) {
     // If token retrieval fails, fall back to request without Authorization
-    const res = await fetch(path, { ...opts, credentials: "include" });
+    // Add cache-busting timestamp to URL
+    const url = new URL(path, window.location.origin);
+    url.searchParams.set('_t', Date.now().toString());
+    const cacheBustedPath = url.pathname + url.search;
+    
+    const res = await fetch(cacheBustedPath, { ...opts, credentials: "include", cache: 'no-store' });
     const text = await res.text();
     
     // If unauthorized, clear session and return to login

@@ -30,68 +30,157 @@ export default function Home() {
   const [isDataLoading, setIsDataLoading] = useState(false);
   const [studyDocumentId, setStudyDocumentId] = useState<string | null>(null);
   const [studyDocumentTitle, setStudyDocumentTitle] = useState<string>("");
+  const [authReady, setAuthReady] = useState(false);
 
-  // Check for existing JWT session on mount (server-backed)
+  // Set up auth state listener and check for existing session
   useEffect(() => {
-    const init = async () => {
-      try {
-        const user = await authClient.me();
-        if (user) {
+    const supabase = createClient();
+    let authCheckComplete = false;
+    
+    // Set up auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[Auth State Change]', event, session?.user?.id);
+      
+      // Only respond to INITIAL_SESSION to avoid duplicate fetches
+      // SIGNED_IN is followed immediately by INITIAL_SESSION anyway
+      if (event === 'INITIAL_SESSION') {
+        if (session?.user) {
+          const user = {
+            id: session.user.id,
+            email: session.user.email || '',
+            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User'
+          };
           setCurrentUser(user);
           setView(AppView.HOME);
         } else {
+          setCurrentUser(null);
           setView(AppView.AUTH);
         }
-      } catch (error) {
-        console.error("Auth check failed:", error);
+        
+        if (!authCheckComplete) {
+          authCheckComplete = true;
+          setAuthReady(true);
+        }
+      } else if (event === 'SIGNED_IN') {
+        // Just set the user, but don't trigger auth ready yet
+        // Wait for INITIAL_SESSION to actually fetch data
+        if (session?.user) {
+          const user = {
+            id: session.user.id,
+            email: session.user.email || '',
+            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User'
+          };
+          setCurrentUser(user);
+          setView(AppView.HOME);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
         setView(AppView.AUTH);
+        setDecks([]);
+        setActiveDeckId(null);
+        if (!authCheckComplete) {
+          authCheckComplete = true;
+          setAuthReady(true);
+        }
+      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+        // Update user on token refresh but don't re-fetch decks
+        const user = {
+          id: session.user.id,
+          email: session.user.email || '',
+          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User'
+        };
+        setCurrentUser(user);
       }
+    });
+
+    // Set timeout to mark auth as ready even if no event fires
+    const timeout = setTimeout(() => {
+      if (!authCheckComplete) {
+        console.log('[Auth] Timeout reached, marking auth as ready');
+        authCheckComplete = true;
+        setAuthReady(true);
+      }
+    }, 1000);
+
+    // Cleanup subscription
+    return () => {
+      clearTimeout(timeout);
+      subscription.unsubscribe();
     };
-    init();
   }, []);
 
-  // Fetch data when user changes
+  // Fetch data when user changes and auth is ready
   useEffect(() => {
-    if (currentUser) {
-      const initData = async () => {
-        setIsDataLoading(true);
-        try {
-          // Small delay to ensure Supabase session is fully propagated
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-          // Verify session is available
-          const supabase = createClient();
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session) {
-            console.warn("No session available after login, skipping deck init");
-            setDecks([]);
-            return;
-          }
-          
-          // Try to initialize decks (non-fatal if fails)
-          try {
-            await db.init(currentUser.id);
-          } catch (initError) {
-            console.warn("Failed to initialize decks, continuing anyway:", initError);
-          }
-          
-          // Load existing decks
-          const data = await db.getDecks(currentUser.id);
-          setDecks(data || []);
-        } catch (error) {
-          console.error("Failed to load data:", error);
-          // Don't block the app if data loading fails
-          setDecks([]);
-        } finally {
-          setIsDataLoading(false);
-        }
-      };
-      initData();
-    } else {
+    if (!authReady || !currentUser) {
       setDecks([]);
       setIsDataLoading(false);
+      return;
     }
-  }, [currentUser]);
+    
+    const initData = async () => {
+      setIsDataLoading(true);
+      try {
+        console.log('[initData] Starting deck fetch for user:', currentUser.id);
+        
+        // Wait longer for session to be fully available
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Verify session is still valid and has an access token
+        const supabase = createClient();
+        let session = null;
+        let attempts = 0;
+        
+        // Retry getting session with token up to 3 times
+        while (attempts < 3 && (!session || !session.access_token)) {
+          const { data: { session: sess }, error: sessionError } = await supabase.auth.getSession();
+          
+          if (sessionError) {
+            console.error('[initData] Session error:', sessionError);
+            await new Promise(resolve => setTimeout(resolve, 100));
+            attempts++;
+            continue;
+          }
+          
+          if (sess && sess.access_token) {
+            session = sess;
+            break;
+          }
+          
+          console.warn('[initData] No valid session or token, attempt', attempts + 1);
+          await new Promise(resolve => setTimeout(resolve, 100));
+          attempts++;
+        }
+        
+        if (!session || !session.access_token) {
+          console.error('[initData] Failed to get valid session after', attempts, 'attempts');
+          setDecks([]);
+          setIsDataLoading(false);
+          return;
+        }
+        
+        console.log('[initData] Session valid with token, fetching decks...');
+        
+        // Try to initialize decks (non-fatal if fails)
+        try {
+          await db.init(currentUser.id);
+        } catch (initError) {
+          console.warn("Failed to initialize decks, continuing anyway:", initError);
+        }
+        
+        // Load existing decks
+        const data = await db.getDecks(currentUser.id);
+        console.log('[initData] Fetched decks:', data?.length || 0);
+        setDecks(data || []);
+      } catch (error) {
+        console.error("Failed to load data:", error);
+        setDecks([]);
+      } finally {
+        setIsDataLoading(false);
+      }
+    };
+    
+    initData();
+  }, [currentUser, authReady]);
 
   const handleAuthSuccess = (user: User) => {
     setCurrentUser(user);
