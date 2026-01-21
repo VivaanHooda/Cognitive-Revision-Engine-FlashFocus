@@ -26,7 +26,7 @@ function simulateSingleCard(card, gradeSeq) {
     pad("Status", 10),
     pad("Due Date (UTC)", 22),
     pad("Stability", 10),
-    // pad("Difficulty", 12),
+    pad("Difficulty", 12),
     pad("Reviews", 8)
   );
   console.log("─────────────────────────────────────────────────────────────");
@@ -52,7 +52,7 @@ function simulateSingleCard(card, gradeSeq) {
       pad(res.status, 10),
       pad(dueStr, 22),
       pad(fmt(res.stability), 10),
-    //   pad(fmt(res.difficulty), 12),
+      pad(fmt(res.difficulty), 12),
       pad(res.reviewCount, 8)
     );
 
