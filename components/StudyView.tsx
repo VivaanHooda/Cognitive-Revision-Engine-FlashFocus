@@ -12,6 +12,7 @@ import {
   Send,
   Loader2,
   ChevronRight,
+  Bookmark,
 } from "lucide-react";
 import {
   askCardClarification,
@@ -49,6 +50,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [userAnswer, setUserAnswer] = useState("");
+  const [interimTranscript, setInterimTranscript] = useState("");
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
 
@@ -101,16 +103,44 @@ export const StudyView: React.FC<StudyViewProps> = ({
         (window as any).SpeechRecognition ||
         (window as any).webkitSpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
+      recognitionRef.current.lang = 'en-US';
 
       recognitionRef.current.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setUserAnswer((prev) => (prev ? `${prev} ${transcript}` : transcript));
+        let finalTranscript = '';
+        let interimTranscript = '';
+        
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript + ' ';
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+        
+        if (finalTranscript) {
+          setUserAnswer((prev) => (prev ? `${prev} ${finalTranscript}`.trim() : finalTranscript.trim()));
+          setInterimTranscript('');
+        } else if (interimTranscript) {
+          setInterimTranscript(interimTranscript);
+        }
+      };
+      
+      recognitionRef.current.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+        if (event.error === 'no-speech') {
+          // Auto-stop after silence
+        } else if (event.error !== 'aborted') {
+          alert(`Voice input error: ${event.error}. Please try again.`);
+        }
+      };
+      
+      recognitionRef.current.onend = () => {
         setIsListening(false);
       };
-      recognitionRef.current.onerror = () => setIsListening(false);
-      recognitionRef.current.onend = () => setIsListening(false);
     }
   }, []);
 
@@ -123,6 +153,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
   useEffect(() => {
     setIsFlipped(false);
     setUserAnswer("");
+    setInterimTranscript("");
     setIsChatOpen(false);
     setChatHistory([]);
     setChatInput("");
@@ -132,26 +163,89 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
   const toggleVoice = () => {
     if (!recognitionRef.current) {
-      alert("Voice input not supported in this browser.");
+      alert("Voice input not supported in this browser. Please use Chrome or Edge.");
       return;
     }
     if (isListening) {
       recognitionRef.current.stop();
+      setIsListening(false);
     } else {
-      setUserAnswer("");
-      recognitionRef.current.start();
-      setIsListening(true);
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+      } catch (error) {
+        console.error('Failed to start recognition:', error);
+        setIsListening(false);
+      }
     }
   };
 
   const handleFlip = () => {
+    console.log('[handleFlip] Called with userAnswer:', userAnswer);
+    console.log('[handleFlip] interimTranscript:', interimTranscript);
+    
+    // Capture any interim transcript before stopping
+    let finalAnswer = userAnswer;
+    if (interimTranscript.trim()) {
+      finalAnswer = (userAnswer + ' ' + interimTranscript).trim();
+      setUserAnswer(finalAnswer);
+      setInterimTranscript('');
+    }
+    
+    // Stop recording if still active
+    if (isListening && recognitionRef.current) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    }
+    
     setIsFlipped(true);
-    if (userAnswer.trim()) {
+    
+    // Evaluate answer if exists
+    console.log('[handleFlip] Final answer to evaluate:', finalAnswer);
+    if (finalAnswer.trim()) {
+      console.log('[handleFlip] Starting AI evaluation...');
       setIsGrading(true);
-      // evaluateAnswer(currentCard.front, currentCard.back, userAnswer)
-      //   .then(setGradingResult)
-      //   .catch((err) => console.error("Grading failed", err))
-      //   .finally(() => setIsGrading(false));
+      evaluateAnswer(currentCard.front, currentCard.back, finalAnswer)
+        .then((result) => {
+          console.log('[handleFlip] AI evaluation result:', result);
+          setGradingResult(result);
+        })
+        .catch((err) => {
+          console.error("Grading failed", err);
+        })
+        .finally(() => setIsGrading(false));
+    } else {
+      console.log('[handleFlip] No answer to evaluate');
+    }
+  };
+
+  const handleToggleBookmark = async () => {
+    const newBookmarkStatus = !currentCard.isBookmarked;
+    try {
+      const response = await fetch('/api/cards', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: currentCard.id,
+          isBookmarked: newBookmarkStatus,
+        }),
+      });
+      if (response.ok) {
+        // Update local state
+        const updatedCard = { ...currentCard, isBookmarked: newBookmarkStatus };
+        setQueue(queue.map((card) => card.id === currentCard.id ? updatedCard : card));
+        
+        // Update the deck in parent component
+        const updatedDeck = {
+          ...deck,
+          cards: deck.cards.map((card) => 
+            card.id === currentCard.id ? updatedCard : card
+          ),
+        };
+        onUpdateDeck(updatedDeck);
+      }
+    } catch (err) {
+      console.error('Failed to bookmark card:', err);
     }
   };
 
@@ -260,7 +354,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isFlipped, isFinished, currentIndex, isChatOpen]);
+  }, [isFlipped, isFinished, currentIndex, isChatOpen, userAnswer, interimTranscript, isListening, currentCard]);
 
   if (queue.length === 0) {
     return (
@@ -350,7 +444,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
   };
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 flex flex-col min-h-[calc(100vh-100px)]">
+    <div className="max-w-4xl lg:max-w-5xl xl:max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col min-h-[calc(100vh-100px)]">
       <div className="flex items-center justify-between mb-6">
         <button
           onClick={onExit}
@@ -381,27 +475,44 @@ export const StudyView: React.FC<StudyViewProps> = ({
         />
 
         {!isFlipped && (
-          <div className="mt-8 w-full max-w-xl animate-fade-in-up">
+          <div className="mt-8 w-full max-w-2xl lg:max-w-3xl mx-auto animate-fade-in-up">
             <div className="relative">
-              <input
-                type="text"
-                value={userAnswer}
+              <textarea
+                value={userAnswer + (interimTranscript ? ' ' + interimTranscript : '')}
                 onChange={(e) => setUserAnswer(e.target.value)}
                 placeholder="Type your answer..."
-                className="w-full pl-6 pr-12 py-4 rounded-xl border-2 border-gray-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 outline-none text-lg text-gray-800 transition-all"
-                onKeyDown={(e) => e.key === "Enter" && handleFlip()}
+                className="w-full pl-6 pr-12 py-4 rounded-xl border-2 border-gray-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 outline-none text-lg text-gray-800 transition-all resize-none min-h-[200px] max-h-[600px] overflow-y-auto"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleFlip();
+                  }
+                }}
+                rows={1}
                 autoFocus
+                onInput={(e) => {
+                  const target = e.target as HTMLTextAreaElement;
+                  target.style.height = 'auto';
+                  target.style.height = Math.min(target.scrollHeight, 600) + 'px';
+                }}
               />
               <button
                 onClick={toggleVoice}
-                className={`absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-colors ${
+                className={`absolute right-3 top-4 p-2 rounded-lg transition-all ${
                   isListening
-                    ? "text-red-500 bg-red-50"
-                    : "text-gray-400 hover:text-indigo-600 hover:bg-gray-50"
+                    ? "text-green-600 bg-green-50 animate-pulse"
+                    : "text-red-500 hover:text-red-600 hover:bg-red-50"
                 }`}
-                title="Voice Input"
+                title={isListening ? "Stop Recording" : "Start Voice Input"}
               >
-                {isListening ? <MicOff size={20} /> : <Mic size={20} />}
+                {isListening ? (
+                  <div className="relative">
+                    <Mic size={20} />
+                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-ping"></span>
+                  </div>
+                ) : (
+                  <Mic size={20} />
+                )}
               </button>
             </div>
             <div className="mt-4 text-center">
@@ -416,7 +527,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
         )}
 
         {isFlipped && (
-          <div className="mt-6 w-full max-w-xl animate-fade-in-up flex flex-col gap-6">
+          <div className="mt-6 w-full max-w-2xl lg:max-w-3xl mx-auto animate-fade-in-up flex flex-col gap-6">
             <div>
               <div className="text-sm font-semibold text-gray-500 mb-1 uppercase tracking-wide">
                 Your Answer
@@ -641,6 +752,19 @@ export const StudyView: React.FC<StudyViewProps> = ({
                 </span>
               </button>
             </div>
+
+            {/* Bookmark Button */}
+            <button
+              onClick={handleToggleBookmark}
+              className={`w-full py-3 rounded-xl border-2 font-semibold flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 ${
+                currentCard.isBookmarked
+                  ? 'bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100'
+                  : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              <Bookmark size={18} fill={currentCard.isBookmarked ? 'currentColor' : 'none'} />
+              {currentCard.isBookmarked ? 'Bookmarked' : 'Bookmark this card'}
+            </button>
           </div>
         )}
       </div>

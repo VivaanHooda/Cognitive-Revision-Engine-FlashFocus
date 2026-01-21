@@ -29,6 +29,9 @@ import { generateJSONWithRetry } from "@/lib/gemini.safe";
 
 export const maxDuration = 300; // 5 minutes (Vercel Pro)
 export const dynamic = 'force-dynamic'; // Disable caching
+export const revalidate = 0;
+export const runtime = 'nodejs';
+export const fetchCache = 'force-no-store';
 
 // ============================================================================
 // Configuration
@@ -494,12 +497,21 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    return NextResponse.json({
-      documentId: document.id,
-      title: document.title,
-      topicTree: document.topic_tree,
-      hasTopicTree: document.topic_tree !== null,
-    });
+    return NextResponse.json(
+      {
+        documentId: document.id,
+        title: document.title,
+        topicTree: document.topic_tree,
+        hasTopicTree: document.topic_tree !== null,
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      }
+    );
     
   } catch (error) {
     console.error("[API] /api/generate-tree GET error:", error);

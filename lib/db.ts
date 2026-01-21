@@ -137,6 +137,8 @@ export const db = {
           reviewCount: c.review_count,
           dueDate: c.due_date,
           lastReviewed: c.last_reviewed,
+          isBookmarked: c.is_bookmarked,
+          bookmarkedAt: c.bookmarked_at,
           meta: c.meta,
         });
       }

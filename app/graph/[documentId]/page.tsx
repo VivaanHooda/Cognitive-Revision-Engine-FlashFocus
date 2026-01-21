@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, Download, Loader2 } from "lucide-react";
+import { ArrowLeft, ZoomIn, ZoomOut, Maximize2, Download, Loader2, Zap } from "lucide-react";
 import { createClient } from "@/lib/supabase.client";
 
 // ============================================================================
@@ -70,9 +70,12 @@ export default function GraphPage() {
           headers["Authorization"] = `Bearer ${token}`;
         }
 
-        const response = await fetch(`/api/generate-tree?documentId=${documentId}`, {
+        // Add cache-busting timestamp
+        const timestamp = Date.now();
+        const response = await fetch(`/api/generate-tree?documentId=${documentId}&_t=${timestamp}`, {
           headers,
           credentials: "include",
+          cache: 'no-store',
         });
         
         if (!response.ok) throw new Error('Failed to load document');
@@ -324,8 +327,9 @@ export default function GraphPage() {
         <div className="max-w-screen-2xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => router.back()}
+              onClick={() => router.push('/')}
               className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Back to Documents"
             >
               <ArrowLeft size={20} className="text-gray-600" />
             </button>
@@ -353,12 +357,12 @@ export default function GraphPage() {
             >
               {generatingFlashcards ? (
                 <>
-                  <span className="animate-spin">⏳</span>
+                  <Loader2 className="animate-spin" size={16} />
                   <span>Generating...</span>
                 </>
               ) : (
                 <>
-                  <span>🎴</span>
+                  <Zap size={16} />
                   <span>Generate Flashcards</span>
                 </>
               )}
@@ -729,7 +733,7 @@ export default function GraphPage() {
       {/* Flashcard Viewer Modal */}
       {flashcards && flashcards.length > 0 && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-8">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl lg:max-w-4xl w-full p-8">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
               <div>
@@ -833,8 +837,13 @@ export default function GraphPage() {
 
             {/* Actions */}
             <div className="mt-6 pt-6 border-t border-gray-200 flex justify-center">
-              <p className="text-sm text-gray-600">
-                ✅ Flashcards saved! Go to <a href="/" className="text-indigo-600 hover:text-indigo-700 font-medium">Study page</a> to review with spaced repetition.
+              <p className="text-sm text-gray-600 flex items-center gap-2">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-green-100">
+                  <svg className="w-3 h-3 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </span>
+                Flashcards saved successfully. Go to <a href="/" className="text-indigo-600 hover:text-indigo-700 font-medium">Study page</a> to review with spaced repetition.
               </p>
             </div>
           </div>

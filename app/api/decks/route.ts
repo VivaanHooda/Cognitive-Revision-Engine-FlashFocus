@@ -32,8 +32,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   
+  // Transform snake_case to camelCase for frontend
+  const transformedData = (data ?? []).map((deck: any) => ({
+    ...deck,
+    parentTopic: deck.parent_topic,
+    lastStudied: deck.last_studied,
+    isStarred: deck.is_starred,
+    categoryOrder: deck.category_order,
+  }));
+  
   // Return with no-cache headers
-  return NextResponse.json(data ?? [], {
+  return NextResponse.json(transformedData, {
     headers: {
       'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
       'Pragma': 'no-cache',
@@ -60,6 +69,8 @@ export async function POST(req: Request) {
     title: deck.title,
     description: deck.description || "",
     parent_topic: deck.parentTopic || null,
+    is_starred: deck.isStarred || false,
+    category_order: deck.categoryOrder || 0,
     // Keep deck.cards for backwards-compat but we'll also insert them into cards table
     cards: deck.cards || [],
     last_studied: deck.lastStudied ? new Date(deck.lastStudied) : null,
@@ -146,6 +157,10 @@ export async function PUT(req: Request) {
     payload.last_studied = updated.lastStudied
       ? new Date(updated.lastStudied)
       : null;
+  if (updated.isStarred !== undefined)
+    payload.is_starred = updated.isStarred;
+  if (updated.categoryOrder !== undefined)
+    payload.category_order = updated.categoryOrder;
 
   // Update deck metadata
   const { data: deckData, error: deckErr } = await supabaseAdmin

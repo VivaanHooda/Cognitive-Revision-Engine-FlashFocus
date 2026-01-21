@@ -60,6 +60,8 @@ export async function POST(req: Request) {
     review_count: c.reviewCount ?? c.review_count ?? 0,
     due_date: c.dueDate ? new Date(c.dueDate) : null,
     last_reviewed: c.lastReviewed ? new Date(c.lastReviewed) : null,
+    is_bookmarked: c.isBookmarked ?? false,
+    bookmarked_at: c.bookmarkedAt ? new Date(c.bookmarkedAt) : null,
     meta: c.meta ?? {},
   }));
 
@@ -96,6 +98,10 @@ export async function PUT(req: Request) {
       : null;
   if (body.dueDate !== undefined)
     payload.due_date = body.dueDate ? new Date(body.dueDate) : null;
+  if (body.isBookmarked !== undefined) {
+    payload.is_bookmarked = body.isBookmarked;
+    payload.bookmarked_at = body.isBookmarked ? new Date() : null;
+  }
   if (body.meta !== undefined) payload.meta = body.meta;
 
   const { data, error } = await supabaseAdmin

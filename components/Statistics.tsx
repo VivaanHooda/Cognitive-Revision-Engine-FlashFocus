@@ -1,429 +1,391 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { Deck, FlashcardData } from '@/lib/types';
+import { Deck } from '@/lib/types';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, AreaChart, Area, CartesianGrid 
+  CartesianGrid 
 } from 'recharts';
-import { Trophy, Target, Activity, Layers, BookOpen, Brain, TrendingUp, Clock, CheckCircle, Star, Calendar, Award } from 'lucide-react';
+import { 
+  TrendingUp, Zap, Target, Calendar, CheckCircle, 
+  Clock, Award, Brain, Flame, BarChart3, Activity, Trophy
+} from 'lucide-react';
 
 interface StatsProps {
   decks: Deck[];
 }
 
-// Anki-like Color Palette
 const COLORS = {
-  new: '#3b82f6',      // Blue
-  learning: '#f97316', // Orange
-  review: '#10b981',   // Emerald
-  mastered: '#15803d', // Dark Green
-  background: '#f8fafc',
-  grid: '#e2e8f0',
-  text: '#64748b'
+  primary: '#6366f1',
+  success: '#10b981',
+  warning: '#f59e0b',
+  danger: '#ef4444',
+  info: '#3b82f6',
 };
 
 export const Statistics: React.FC<StatsProps> = ({ decks }) => {
-  // Aggregate all cards into a single array for global stats
   const allCards = useMemo(() => decks.flatMap(d => d.cards), [decks]);
   const totalCards = allCards.length;
 
-  // --- Today's Stats Calculation ---
-  const todayStats = useMemo(() => {
+  // Core Metrics
+  const metrics = useMemo(() => {
     const now = Date.now();
     const startOfDay = new Date();
-    startOfDay.setHours(0,0,0,0);
+    startOfDay.setHours(0, 0, 0, 0);
     const startOfDayTs = startOfDay.getTime();
 
-    const reviewsDue = allCards.filter(c => c.status !== 'new' && (!c.dueDate || c.dueDate <= now)).length;
-    const newItems = allCards.filter(c => c.status === 'new').length;
-    const completedToday = allCards.filter(c => c.lastReviewed && c.lastReviewed >= startOfDayTs).length;
-    const remainingToday = reviewsDue + newItems; 
+    // Cards reviewed today
+    const reviewedToday = allCards.filter(c => 
+      c.lastReviewed && c.lastReviewed >= startOfDayTs
+    ).length;
 
-    return { reviewsDue, newItems, completedToday, remainingToday };
+    // Retention rate (cards with interval > 7 days / total reviewed cards)
+    const longTermCards = allCards.filter(c => 
+      c.status !== 'new' && (c.interval || 0) >= 7
+    ).length;
+    const reviewedCards = allCards.filter(c => c.status !== 'new').length;
+    const retentionRate = reviewedCards > 0 
+      ? Math.round((longTermCards / reviewedCards) * 100) 
+      : 0;
+
+    // Average interval (proof of spacing)
+    const avgInterval = reviewedCards > 0
+      ? Math.round(allCards.reduce((sum, c) => sum + (c.interval || 0), 0) / reviewedCards)
+      : 0;
+
+    // Study streak (consecutive days with reviews)
+    const studyDays = new Set<string>();
+    allCards.forEach(c => {
+      if (c.lastReviewed) {
+        const date = new Date(c.lastReviewed);
+        studyDays.add(date.toDateString());
+      }
+    });
+    const streak = studyDays.size;
+
+    // Cards due today
+    const dueToday = allCards.filter(c => 
+      c.status !== 'new' && (!c.dueDate || c.dueDate <= now)
+    ).length;
+
+    // Mastered cards (interval >= 21 days)
+    const masteredCards = allCards.filter(c => (c.interval || 0) >= 21).length;
+
+    // Total reviews
+    const totalReviews = allCards.reduce((sum, c) => sum + (c.reviewCount || 0), 0);
+
+    // Time saved calculation (assuming 10 mins per card if cramming vs spaced)
+    const timeSavedHours = Math.round((totalReviews * 10 - reviewedCards * 15) / 60);
+
+    return {
+      reviewedToday,
+      retentionRate,
+      avgInterval,
+      streak,
+      dueToday,
+      masteredCards,
+      totalReviews,
+      timeSavedHours: Math.max(0, timeSavedHours),
+    };
   }, [allCards]);
 
-  // --- Content Mastery Calculation (Per Subject/Deck) ---
-  const subjectMastery = useMemo(() => {
-    return decks.map(deck => {
-      const total = deck.cards.length;
-      const counts = {
-        mastered: deck.cards.filter(c => c.status === 'mastered').length,
-        review: deck.cards.filter(c => c.status === 'review').length,
-        learning: deck.cards.filter(c => c.status === 'learning').length,
-        new: deck.cards.filter(c => c.status === 'new').length,
-      };
+  // 7-day forecast
+  const forecastData = useMemo(() => {
+    const days = [];
+    const now = new Date();
+    for (let i = 0; i < 7; i++) {
+      const date = new Date();
+      date.setDate(now.getDate() + i + 1);
+      date.setHours(0, 0, 0, 0);
+      const count = allCards.filter(c => {
+        if (!c.dueDate || c.status === 'new') return false;
+        const due = new Date(c.dueDate);
+        due.setHours(0, 0, 0, 0);
+        return due.getTime() === date.getTime();
+      }).length;
+      days.push({
+        name: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+        count,
+      });
+    }
+    return days;
+  }, [allCards]);
 
-      const masteryPercent = total > 0 ? Math.round((counts.mastered / total) * 100) : 0;
-      const seenPercent = total > 0 ? Math.round(((total - counts.new) / total) * 100) : 0;
-      
-      const avgInterval = total > 0 
-        ? (deck.cards.reduce((acc, c) => acc + (c.interval || 0), 0) / total).toFixed(1)
+  // Interval distribution (proof of spacing)
+  const intervalDistribution = useMemo(() => {
+    const buckets = [
+      { range: '<1d', count: 0 },
+      { range: '1-3d', count: 0 },
+      { range: '4-7d', count: 0 },
+      { range: '1-3w', count: 0 },
+      { range: '1-3m', count: 0 },
+      { range: '>3m', count: 0 },
+    ];
+
+    allCards.forEach(c => {
+      const interval = c.interval || 0;
+      if (interval < 1) buckets[0].count++;
+      else if (interval <= 3) buckets[1].count++;
+      else if (interval <= 7) buckets[2].count++;
+      else if (interval <= 21) buckets[3].count++;
+      else if (interval <= 90) buckets[4].count++;
+      else buckets[5].count++;
+    });
+
+    return buckets;
+  }, [allCards]);
+
+  // Deck performance
+  const deckPerformance = useMemo(() => {
+    return decks.map(deck => {
+      const reviewed = deck.cards.filter(c => c.status !== 'new').length;
+      const mastered = deck.cards.filter(c => (c.interval || 0) >= 21).length;
+      const avgInterval = reviewed > 0
+        ? Math.round(deck.cards.reduce((sum, c) => sum + (c.interval || 0), 0) / reviewed)
         : 0;
+      const retention = reviewed > 0 ? Math.round((mastered / reviewed) * 100) : 0;
 
       return {
-        id: deck.id,
         title: deck.title,
-        topic: deck.parentTopic || 'General',
-        counts,
-        total,
-        masteryPercent,
-        seenPercent,
-        avgInterval
+        total: deck.cards.length,
+        reviewed,
+        mastered,
+        avgInterval,
+        retention,
       };
-    });
+    }).sort((a, b) => b.retention - a.retention);
   }, [decks]);
 
-  // --- KPI Stats ---
-  const totalReviews = useMemo(() => 
-    allCards.reduce((acc, card) => acc + (card.reviewCount || 0), 0)
-  , [allCards]);
-
-  const avgEase = useMemo(() => {
-    if (totalCards === 0) return 0;
-    const sum = allCards.reduce((acc, card) => acc + (card.easeFactor || 2.5), 0);
-    return (sum / totalCards).toFixed(2);
-  }, [allCards, totalCards]);
-
-  // --- CHART 1: Card Status (Pie Chart) ---
-  const statusData = useMemo(() => {
-    const counts = { new: 0, learning: 0, review: 0, mastered: 0 };
-    allCards.forEach(c => {
-      const s = c.status || 'new';
-      if (counts[s] !== undefined) counts[s]++;
-    });
-
-    return [
-      { name: 'New', value: counts.new, color: COLORS.new },
-      { name: 'Learning', value: counts.learning, color: COLORS.learning },
-      { name: 'Review', value: counts.review, color: COLORS.review },
-      { name: 'Mastered', value: counts.mastered, color: COLORS.mastered },
-    ].filter(d => d.value > 0);
-  }, [allCards]);
-
-  // --- CHART 2: Future Due Forecast (7 Days) ---
-  const forecastData = useMemo(() => {
-    const now = new Date();
-    const days = [];
-    for(let i = 0; i < 7; i++) {
-        const d = new Date();
-        d.setDate(now.getDate() + i + 1);
-        d.setHours(0,0,0,0);
-        days.push({
-            date: d,
-            label: d.toLocaleDateString('en-US', { weekday: 'short' }),
-            count: 0
-        });
-    }
-
-    allCards.forEach(c => {
-        if (!c.dueDate || c.status === 'new') return;
-        const due = new Date(c.dueDate);
-        due.setHours(0,0,0,0);
-        const dayStat = days.find(d => d.date.getTime() === due.getTime());
-        if (dayStat) dayStat.count++;
-    });
-
-    return days.map(d => ({ name: d.label, count: d.count }));
-  }, [allCards]);
-
-  // --- CHART 3: Ease Factor Distribution ---
-  const easeData = useMemo(() => {
-    const buckets: Record<string, number> = {};
-    for(let i = 13; i <= 30; i++) buckets[(i/10).toFixed(1)] = 0;
-    allCards.forEach(c => {
-        if (c.status === 'new') return;
-        const ef = c.easeFactor || 2.5;
-        const key = ef.toFixed(1);
-        if (buckets[key] !== undefined) buckets[key]++;
-    });
-    return Object.entries(buckets).map(([ease, count]) => ({ ease, count }));
-  }, [allCards]);
-
-
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 pb-20">
-      
-      {/* TODAY'S DASHBOARD */}
-      <div className="mb-12">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">Today's Progress</h1>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-green-100 flex items-center justify-between relative overflow-hidden group">
-                <div className="absolute right-0 top-0 h-full w-1 bg-green-500"></div>
-                <div>
-                    <p className="text-sm font-bold text-gray-400 uppercase tracking-wide mb-1">Reviews Due</p>
-                    <p className="text-3xl font-bold text-gray-900">{todayStats.reviewsDue}</p>
-                </div>
-                <div className="p-3 bg-green-50 text-green-600 rounded-xl">
-                    <Clock size={24} />
-                </div>
-            </div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-20">
+      {/* Header */}
+      <div className="mb-6 sm:mb-8">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center gap-2 sm:gap-3">
+          <BarChart3 className="text-indigo-600" size={28} />
+          Learning Analytics
+        </h1>
+        <p className="text-sm sm:text-base text-gray-500 mt-2">
+          Track your progress and see how spaced repetition improves retention
+        </p>
+      </div>
 
-             <div className="bg-white p-5 rounded-2xl shadow-sm border border-blue-100 flex items-center justify-between relative overflow-hidden group">
-                <div className="absolute right-0 top-0 h-full w-1 bg-blue-500"></div>
-                <div>
-                    <p className="text-sm font-bold text-gray-400 uppercase tracking-wide mb-1">New Cards</p>
-                    <p className="text-3xl font-bold text-gray-900">{todayStats.newItems}</p>
-                </div>
-                <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
-                    <Star size={24} />
-                </div>
-            </div>
+      {/* Key Metrics Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+        {/* Retention Rate - PRIMARY METRIC */}
+        <div className="col-span-2 lg:col-span-1 bg-gradient-to-br from-indigo-500 to-indigo-600 p-4 sm:p-6 rounded-2xl text-white shadow-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <Trophy size={20} className="opacity-90" />
+            <span className="text-xs sm:text-sm font-semibold uppercase tracking-wide opacity-90">
+              Retention Rate
+            </span>
+          </div>
+          <p className="text-3xl sm:text-4xl font-black mb-1">{metrics.retentionRate}%</p>
+          <p className="text-xs opacity-75">Cards with 7+ day intervals</p>
+        </div>
 
-             <div className="bg-white p-5 rounded-2xl shadow-sm border border-indigo-100 flex items-center justify-between relative overflow-hidden group">
-                <div className="absolute right-0 top-0 h-full w-1 bg-indigo-500"></div>
-                <div>
-                    <p className="text-sm font-bold text-gray-400 uppercase tracking-wide mb-1">Completed</p>
-                    <p className="text-3xl font-bold text-gray-900">{todayStats.completedToday}</p>
-                </div>
-                <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl">
-                    <CheckCircle size={24} />
-                </div>
-            </div>
+        {/* Avg Interval - PROOF OF SPACING */}
+        <div className="bg-white border-2 border-green-200 p-4 sm:p-6 rounded-2xl">
+          <div className="flex items-center gap-2 mb-2 text-green-600">
+            <TrendingUp size={18} />
+            <span className="text-xs font-bold uppercase tracking-wide">Avg Interval</span>
+          </div>
+          <p className="text-2xl sm:text-3xl font-black text-gray-900">{metrics.avgInterval}<span className="text-lg font-normal text-gray-500">d</span></p>
+          <p className="text-xs text-gray-500 mt-1">Spacing is working!</p>
+        </div>
 
-             <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between relative overflow-hidden group">
-                <div className="absolute right-0 top-0 h-full w-1 bg-gray-400"></div>
-                <div>
-                    <p className="text-sm font-bold text-gray-400 uppercase tracking-wide mb-1">Total Due</p>
-                    <p className="text-3xl font-bold text-gray-900">{todayStats.remainingToday}</p>
-                </div>
-                <div className="p-3 bg-gray-50 text-gray-500 rounded-xl">
-                    <Layers size={24} />
-                </div>
-            </div>
+        {/* Study Streak */}
+        <div className="bg-white border-2 border-orange-200 p-4 sm:p-6 rounded-2xl">
+          <div className="flex items-center gap-2 mb-2 text-orange-600">
+            <Flame size={18} />
+            <span className="text-xs font-bold uppercase tracking-wide">Study Days</span>
+          </div>
+          <p className="text-2xl sm:text-3xl font-black text-gray-900">{metrics.streak}</p>
+          <p className="text-xs text-gray-500 mt-1">Total unique days</p>
+        </div>
+
+        {/* Mastered Cards */}
+        <div className="bg-white border-2 border-purple-200 p-4 sm:p-6 rounded-2xl">
+          <div className="flex items-center gap-2 mb-2 text-purple-600">
+            <Award size={18} />
+            <span className="text-xs font-bold uppercase tracking-wide">Mastered</span>
+          </div>
+          <p className="text-2xl sm:text-3xl font-black text-gray-900">{metrics.masteredCards}</p>
+          <p className="text-xs text-gray-500 mt-1">21+ day intervals</p>
         </div>
       </div>
 
-      {/* CONTENT MASTERY BLOCK (New Section) */}
-      <div className="mb-12">
-        <div className="flex items-center gap-2 mb-6">
-            <Award className="text-indigo-600" size={24} />
-            <h2 className="text-2xl font-bold text-gray-900">Content Mastery</h2>
+      {/* Secondary Metrics */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6 sm:mb-8">
+        <div className="bg-white p-4 rounded-xl border border-gray-200">
+          <div className="flex items-center gap-2 mb-2 text-blue-600">
+            <CheckCircle size={16} />
+            <span className="text-xs font-semibold">Today</span>
+          </div>
+          <p className="text-xl sm:text-2xl font-bold text-gray-900">{metrics.reviewedToday}</p>
         </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {subjectMastery.map(subj => (
-                <div key={subj.id} className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex justify-between items-start mb-4">
-                        <div>
-                            <span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest">{subj.topic}</span>
-                            <h3 className="text-lg font-bold text-gray-800 leading-tight">{subj.title}</h3>
-                        </div>
-                        <div className="text-right">
-                            <span className="text-2xl font-black text-indigo-600">{subj.masteryPercent}%</span>
-                            <p className="text-[10px] text-gray-400 uppercase font-bold tracking-tighter">Mastery Score</p>
-                        </div>
-                    </div>
 
-                    {/* Segmented Progress Bar */}
-                    <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden flex mb-4">
-                        <div 
-                            className="h-full bg-green-700 transition-all duration-500" 
-                            style={{ width: `${(subj.counts.mastered / subj.total) * 100}%` }}
-                            title={`Mastered: ${subj.counts.mastered}`}
-                        />
-                        <div 
-                            className="h-full bg-emerald-400 transition-all duration-500" 
-                            style={{ width: `${(subj.counts.review / subj.total) * 100}%` }}
-                            title={`Review: ${subj.counts.review}`}
-                        />
-                        <div 
-                            className="h-full bg-orange-400 transition-all duration-500" 
-                            style={{ width: `${(subj.counts.learning / subj.total) * 100}%` }}
-                            title={`Learning: ${subj.counts.learning}`}
-                        />
-                        <div 
-                            className="h-full bg-blue-500 transition-all duration-500" 
-                            style={{ width: `${(subj.counts.new / subj.total) * 100}%` }}
-                            title={`New: ${subj.counts.new}`}
-                        />
-                    </div>
+        <div className="bg-white p-4 rounded-xl border border-gray-200">
+          <div className="flex items-center gap-2 mb-2 text-red-600">
+            <Clock size={16} />
+            <span className="text-xs font-semibold">Due Now</span>
+          </div>
+          <p className="text-xl sm:text-2xl font-bold text-gray-900">{metrics.dueToday}</p>
+        </div>
 
-                    <div className="grid grid-cols-3 gap-2">
-                        <div className="text-center p-2 bg-gray-50 rounded-lg">
-                            <p className="text-[10px] text-gray-400 font-bold uppercase">Seen</p>
-                            <p className="text-sm font-bold text-gray-700">{subj.seenPercent}%</p>
-                        </div>
-                        <div className="text-center p-2 bg-gray-50 rounded-lg">
-                            <p className="text-[10px] text-gray-400 font-bold uppercase">Interval</p>
-                            <p className="text-sm font-bold text-gray-700">{subj.avgInterval}d</p>
-                        </div>
-                        <div className="text-center p-2 bg-gray-50 rounded-lg">
-                            <p className="text-[10px] text-gray-400 font-bold uppercase">Total</p>
-                            <p className="text-sm font-bold text-gray-700">{subj.total}</p>
-                        </div>
-                    </div>
-                </div>
-            ))}
+        <div className="bg-white p-4 rounded-xl border border-gray-200">
+          <div className="flex items-center gap-2 mb-2 text-indigo-600">
+            <Activity size={16} />
+            <span className="text-xs font-semibold">Reviews</span>
+          </div>
+          <p className="text-xl sm:text-2xl font-bold text-gray-900">{metrics.totalReviews}</p>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-gray-200">
+          <div className="flex items-center gap-2 mb-2 text-green-600">
+            <Zap size={16} />
+            <span className="text-xs font-semibold">Time Saved</span>
+          </div>
+          <p className="text-xl sm:text-2xl font-bold text-gray-900">{metrics.timeSavedHours}<span className="text-sm font-normal text-gray-500">h</span></p>
         </div>
       </div>
 
-      <div className="h-px bg-gray-200 w-full mb-10"></div>
-
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Lifetime Statistics</h2>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
-          <div className="flex items-center gap-2 text-indigo-500">
-            <BookOpen size={20} />
-            <span className="text-xs font-bold uppercase tracking-wide">Total Cards</span>
+      {/* Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
+        {/* 7-Day Forecast */}
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-gray-200">
+          <div className="flex items-center gap-2 mb-4">
+            <Calendar size={20} className="text-gray-600" />
+            <h3 className="text-base sm:text-lg font-bold text-gray-900">Upcoming Reviews</h3>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{totalCards}</p>
-        </div>
-        
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
-          <div className="flex items-center gap-2 text-indigo-500">
-            <Activity size={20} />
-            <span className="text-xs font-bold uppercase tracking-wide">Total Reviews</span>
-          </div>
-          <p className="text-3xl font-bold text-gray-900">{totalReviews}</p>
-        </div>
-
-         <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
-          <div className="flex items-center gap-2 text-indigo-500">
-            <Brain size={20} />
-            <span className="text-xs font-bold uppercase tracking-wide">Avg Ease Factor</span>
-          </div>
-          <div>
-            <p className="text-3xl font-bold text-gray-900">{avgEase}</p>
-            <p className="text-xs text-gray-400 mt-1">Lower = Harder deck</p>
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-32">
-          <div className="flex items-center gap-2 text-indigo-500">
-            <Layers size={20} />
-            <span className="text-xs font-bold uppercase tracking-wide">Decks</span>
-          </div>
-          <p className="text-3xl font-bold text-gray-900">{decks.length}</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 min-h-[400px]">
-          <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
-            <Target size={18} className="text-gray-400" />
-            Card Breakdown
-          </h3>
-          <p className="text-sm text-gray-500 mb-6">Distribution of card maturity.</p>
-          
-          <div className="h-64 w-full relative">
+          <div className="h-56 sm:h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={statusData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {statusData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} strokeWidth={0} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                     itemStyle={{ fontWeight: 600 }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
-                <span className="text-3xl font-bold text-gray-800">{totalCards}</span>
-                <p className="text-xs text-gray-400 font-semibold uppercase">Total</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 mt-4">
-             {statusData.map(item => (
-                 <div key={item.name} className="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-                    <div className="flex-1 flex justify-between">
-                        <span className="text-sm font-medium text-gray-600">{item.name}</span>
-                        <span className="text-sm font-bold text-gray-900">{item.value}</span>
-                    </div>
-                 </div>
-             ))}
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 min-h-[400px]">
-          <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
-            <Calendar size={18} className="text-gray-400" />
-            7-Day Forecast
-          </h3>
-          <p className="text-sm text-gray-500 mb-6">Number of reviews due in the coming days.</p>
-          
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={forecastData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.grid} />
+              <BarChart data={forecastData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                 <XAxis 
-                    dataKey="name" 
-                    stroke={COLORS.text} 
-                    fontSize={12} 
-                    tickLine={false} 
-                    axisLine={false} 
-                    tickMargin={10}
+                  dataKey="name" 
+                  fontSize={10} 
+                  tickLine={false} 
+                  axisLine={false}
+                  angle={-45}
+                  textAnchor="end"
+                  height={60}
                 />
-                <YAxis 
-                    stroke={COLORS.text} 
-                    fontSize={12} 
-                    tickLine={false} 
-                    axisLine={false} 
-                    allowDecimals={false}
-                />
+                <YAxis fontSize={11} tickLine={false} axisLine={false} />
                 <Tooltip 
-                    cursor={{ fill: '#f1f5f9' }}
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  contentStyle={{ 
+                    borderRadius: '8px', 
+                    border: 'none', 
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' 
+                  }}
                 />
-                <Bar dataKey="count" fill={COLORS.review} radius={[6, 6, 0, 0]} barSize={40} />
+                <Bar dataKey="count" fill="#6366f1" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <p className="text-xs text-gray-400 text-center mt-4">Based on current Due Dates (4 AM rollover)</p>
         </div>
-      </div>
 
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <h3 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
-          <Activity size={18} className="text-gray-400" />
-          Card Ease Distribution
-        </h3>
-        <p className="text-sm text-gray-500 mb-6">
-            Lower Ease (1.3) = Harder content. Higher Ease (3.0) = Easier content.
-        </p>
-
-        <div className="h-64 w-full">
-           <ResponsiveContainer width="100%" height="100%">
-             <AreaChart data={easeData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                    <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={COLORS.learning} stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor={COLORS.learning} stopOpacity={0}/>
-                    </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={COLORS.grid} />
-                <XAxis dataKey="ease" stroke={COLORS.text} fontSize={12} tickLine={false} axisLine={false} tickMargin={10} />
-                <YAxis stroke={COLORS.text} fontSize={12} tickLine={false} axisLine={false} />
+        {/* Interval Distribution - PROOF OF SRS */}
+        <div className="bg-white p-4 sm:p-6 rounded-2xl border border-gray-200">
+          <div className="flex items-center gap-2 mb-4">
+            <Target size={20} className="text-gray-600" />
+            <div className="flex-1">
+              <h3 className="text-base sm:text-lg font-bold text-gray-900">Spacing Distribution</h3>
+              <p className="text-xs text-gray-500">Proof that SRS works</p>
+            </div>
+          </div>
+          <div className="h-56 sm:h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={intervalDistribution} layout="vertical" margin={{ top: 5, right: 5, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e5e7eb" />
+                <XAxis type="number" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis 
+                  type="category" 
+                  dataKey="range" 
+                  fontSize={11} 
+                  tickLine={false} 
+                  axisLine={false}
+                  width={50}
+                />
                 <Tooltip 
-                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  contentStyle={{ 
+                    borderRadius: '8px', 
+                    border: 'none', 
+                    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' 
+                  }}
                 />
-                <Area 
-                    type="monotone" 
-                    dataKey="count" 
-                    stroke={COLORS.learning} 
-                    fillOpacity={1} 
-                    fill="url(#colorCount)" 
-                    strokeWidth={2}
-                />
-             </AreaChart>
-           </ResponsiveContainer>
+                <Bar dataKey="count" fill="#10b981" radius={[0, 6, 6, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
 
+      {/* Deck Performance Table */}
+      <div className="bg-white p-4 sm:p-6 rounded-2xl border border-gray-200">
+        <div className="flex items-center gap-2 mb-4">
+          <Brain size={20} className="text-gray-600" />
+          <h3 className="text-base sm:text-lg font-bold text-gray-900">Deck Performance</h3>
+        </div>
+        
+        <div className="overflow-x-auto -mx-4 sm:mx-0">
+          <div className="inline-block min-w-full align-middle">
+            <table className="min-w-full">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 sm:px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Deck
+                  </th>
+                  <th className="px-3 sm:px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider hidden sm:table-cell">
+                    Total
+                  </th>
+                  <th className="px-3 sm:px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Retention
+                  </th>
+                  <th className="px-3 sm:px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider hidden md:table-cell">
+                    Avg Interval
+                  </th>
+                  <th className="px-3 sm:px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                    Mastered
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {deckPerformance.slice(0, 10).map((deck, idx) => (
+                  <tr key={idx} className="hover:bg-gray-50">
+                    <td className="px-3 sm:px-4 py-3 text-xs sm:text-sm font-medium text-gray-900 max-w-[150px] sm:max-w-none truncate">
+                      {deck.title}
+                    </td>
+                    <td className="px-3 sm:px-4 py-3 text-center text-xs sm:text-sm text-gray-600 hidden sm:table-cell">
+                      {deck.total}
+                    </td>
+                    <td className="px-3 sm:px-4 py-3 text-center">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ${
+                        deck.retention >= 70 ? 'bg-green-100 text-green-800' :
+                        deck.retention >= 50 ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {deck.retention}%
+                      </span>
+                    </td>
+                    <td className="px-3 sm:px-4 py-3 text-center text-xs sm:text-sm text-gray-600 hidden md:table-cell">
+                      {deck.avgInterval}d
+                    </td>
+                    <td className="px-3 sm:px-4 py-3 text-center text-xs sm:text-sm font-semibold text-indigo-600">
+                      {deck.mastered}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {deckPerformance.length === 0 && (
+          <p className="text-center py-8 text-gray-500 text-sm">
+            No decks yet. Start studying to see performance data!
+          </p>
+        )}
+      </div>
     </div>
   );
 };

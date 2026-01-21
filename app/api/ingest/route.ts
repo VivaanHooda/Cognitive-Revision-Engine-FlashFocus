@@ -19,6 +19,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { processDocument } from "@/lib/ingest";
 
+// Disable caching for this route
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+export const runtime = 'nodejs';
+export const fetchCache = 'force-no-store';
+
 // ============================================================================
 // Configuration
 // ============================================================================
@@ -321,12 +327,135 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    return NextResponse.json({
-      documents: documents ?? [],
-    });
+    return NextResponse.json(
+      {
+        documents: documents ?? [],
+      },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      }
+    );
     
   } catch (error) {
     console.error("[API] /api/ingest GET error:", error);
+    
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+// ============================================================================
+// DELETE: Remove a document and its related data
+// ============================================================================
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const accessToken = getAccessToken(request);
+    if (!accessToken) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+    
+    const supabase = getAdminClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser(accessToken);
+    
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+    
+    // Get documentId from query params
+    const { searchParams } = new URL(request.url);
+    const documentId = searchParams.get("documentId");
+    
+    if (!documentId) {
+      return NextResponse.json(
+        { error: "Missing documentId parameter" },
+        { status: 400 }
+      );
+    }
+    
+    // Fetch document to verify ownership and get file_path
+    const { data: document, error: fetchError } = await supabase
+      .from("documents")
+      .select("id, user_id, file_path")
+      .eq("id", documentId)
+      .single();
+    
+    if (fetchError || !document) {
+      return NextResponse.json(
+        { error: "Document not found" },
+        { status: 404 }
+      );
+    }
+    
+    // Verify user owns the document
+    if (document.user_id !== user.id) {
+      return NextResponse.json(
+        { error: "Forbidden - you don't own this document" },
+        { status: 403 }
+      );
+    }
+    
+    // Delete document chunks (will cascade delete via FK)
+    const { error: chunksError } = await supabase
+      .from("document_chunks")
+      .delete()
+      .eq("document_id", documentId);
+    
+    if (chunksError) {
+      console.error("[API] Error deleting chunks:", chunksError);
+      // Continue anyway - document might not have chunks
+    }
+    
+    // Delete the document record
+    const { error: deleteError } = await supabase
+      .from("documents")
+      .delete()
+      .eq("id", documentId);
+    
+    if (deleteError) {
+      return NextResponse.json(
+        { error: `Failed to delete document: ${deleteError.message}` },
+        { status: 500 }
+      );
+    }
+    
+    // Delete file from storage
+    if (document.file_path) {
+      const { error: storageError } = await supabase.storage
+        .from(CONFIG.STORAGE_BUCKET)
+        .remove([document.file_path]);
+      
+      if (storageError) {
+        console.error("[API] Error deleting file from storage:", storageError);
+        // Don't fail the request if storage deletion fails
+      }
+    }
+    
+    return NextResponse.json(
+      { success: true, message: "Document deleted successfully" },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      }
+    );
+    
+  } catch (error) {
+    console.error("[API] /api/ingest DELETE error:", error);
     
     return NextResponse.json(
       { error: "Internal server error" },

@@ -215,7 +215,7 @@ export default function DocumentStudyView({
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
+        <div className="max-w-6xl lg:max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
           <button
             onClick={onBack}
             className="text-gray-600 hover:text-gray-800 flex items-center gap-2"
@@ -234,7 +234,7 @@ export default function DocumentStudyView({
         </div>
         
         {/* Progress bar */}
-        <div className="max-w-4xl mx-auto mt-4">
+        <div className="max-w-6xl lg:max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
           <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300"
@@ -245,7 +245,7 @@ export default function DocumentStudyView({
       </div>
 
       {/* Flashcard */}
-      <div className="max-w-4xl mx-auto px-6 py-12">
+      <div className="max-w-6xl lg:max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="mb-6 flex items-center justify-between">
           <div className="text-sm text-gray-600">
             {currentCard.topicLabel && (

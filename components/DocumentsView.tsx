@@ -1140,9 +1140,12 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ userId, onStudyDoc
         headers["Authorization"] = `Bearer ${token}`;
       }
 
-      const response = await fetch("/api/ingest", {
+      // Add cache-busting timestamp
+      const timestamp = Date.now();
+      const response = await fetch(`/api/ingest?_t=${timestamp}`, {
         headers,
         credentials: "include",
+        cache: 'no-store',
       });
       const data = await response.json();
 
@@ -1182,11 +1185,14 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ userId, onStudyDoc
           headers["Authorization"] = `Bearer ${token}`;
         }
 
+        // Add cache-busting timestamp
+        const timestamp = Date.now();
         const response = await fetch(
-          `/api/generate-tree?documentId=${doc.id}`,
+          `/api/generate-tree?documentId=${doc.id}&_t=${timestamp}`,
           {
             headers,
             credentials: "include",
+            cache: 'no-store',
           }
         );
         const data = await response.json();
@@ -1222,11 +1228,14 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ userId, onStudyDoc
         headers["Authorization"] = `Bearer ${token}`;
       }
 
-      const response = await fetch("/api/generate-tree", {
+      // Add cache-busting timestamp
+      const timestamp = Date.now();
+      const response = await fetch(`/api/generate-tree?_t=${timestamp}`, {
         method: "POST",
         headers,
         body: JSON.stringify({ documentId: docId }),
         credentials: "include",
+        cache: 'no-store',
       });
 
       const data = await response.json();
@@ -1257,26 +1266,59 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ userId, onStudyDoc
     // Optimistic update
     setDocuments((prev) => prev.filter((d) => d.id !== docId));
 
-    // TODO: Add delete API endpoint when needed
+    try {
+      // Get auth token
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const timestamp = Date.now();
+      const response = await fetch(
+        `/api/ingest?documentId=${docId}&_t=${timestamp}`,
+        {
+          method: "DELETE",
+          headers,
+          credentials: "include",
+          cache: 'no-store',
+        }
+      );
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete document");
+      }
+    } catch (err) {
+      console.error("Failed to delete document:", err);
+      setError(err instanceof Error ? err.message : "Failed to delete document");
+      // Revert optimistic update on error
+      await fetchDocuments();
+    }
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* Header */}
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Documents</h1>
-          <p className="text-gray-500 mt-1">
-            Upload PDFs and explore their structure
-          </p>
+      <div className="mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Documents</h1>
+            <p className="text-gray-500 mt-1 text-sm sm:text-base">
+              Upload PDFs and explore their structure
+            </p>
+          </div>
+          <button
+            onClick={() => setShowUploadModal(true)}
+            className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-md font-medium text-sm sm:text-base"
+          >
+            <Upload size={18} className="sm:w-5 sm:h-5" />
+            <span>Upload PDF</span>
+          </button>
         </div>
-        <button
-          onClick={() => setShowUploadModal(true)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 transition-colors shadow-md font-medium"
-        >
-          <Upload size={20} />
-          <span>Upload PDF</span>
-        </button>
       </div>
 
       {/* Error Alert */}

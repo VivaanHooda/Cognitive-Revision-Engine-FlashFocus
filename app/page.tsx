@@ -31,6 +31,7 @@ export default function Home() {
   const [studyDocumentId, setStudyDocumentId] = useState<string | null>(null);
   const [studyDocumentTitle, setStudyDocumentTitle] = useState<string>("");
   const [authReady, setAuthReady] = useState(false);
+  const [virtualBookmarkedDeck, setVirtualBookmarkedDeck] = useState<Deck | null>(null);
 
   // Set up auth state listener and check for existing session
   useEffect(() => {
@@ -205,6 +206,12 @@ export default function Home() {
     setView(AppView.STUDY);
   };
 
+  const handleSelectVirtualDeck = (deck: Deck) => {
+    setVirtualBookmarkedDeck(deck);
+    setActiveDeckId(deck.id);
+    setView(AppView.STUDY);
+  };
+
   const handleUpdateDeck = async (updatedDeck: Deck) => {
     if (!currentUser) return;
     setDecks((prev) =>
@@ -243,13 +250,13 @@ export default function Home() {
     return <Auth onAuthSuccess={handleAuthSuccess} />;
   }
 
-  const activeDeck = decks.find((d) => d.id === activeDeckId);
+  const activeDeck = decks.find((d) => d.id === activeDeckId) || virtualBookmarkedDeck;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-indigo-100">
       {view !== AppView.STUDY && (
         <nav className="bg-white border-b border-gray-200 sticky top-0 z-40">
-          <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div
               className="flex items-center gap-2 cursor-pointer"
               onClick={() => setView(AppView.HOME)}
@@ -355,7 +362,9 @@ export default function Home() {
               <DeckList
                 decks={decks}
                 onSelectDeck={handleSelectDeck}
+                onSelectVirtualDeck={handleSelectVirtualDeck}
                 onAddDeck={handleAddDeck}
+                onUpdateDeck={handleUpdateDeck}
                 onDeleteDeck={handleDeleteDeck}
                 userId={currentUser?.id || ""}
               />

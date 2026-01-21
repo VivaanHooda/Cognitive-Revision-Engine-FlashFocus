@@ -16,6 +16,9 @@ import {
   Layers,
   Clock,
   Star,
+  Settings,
+  GripVertical,
+  Bookmark,
 } from "lucide-react";
 import {
   generateCurriculum,
@@ -27,7 +30,9 @@ import { v4 as uuidv4 } from "uuid";
 interface DeckListProps {
   decks: Deck[];
   onSelectDeck: (deckId: string) => void;
+  onSelectVirtualDeck?: (deck: Deck) => void;
   onAddDeck: (deck: Deck) => void;
+  onUpdateDeck: (deck: Deck) => void;
   onDeleteDeck: (deckId: string) => void;
   userId: string; // Added userId to props to ensure new decks have an owner
 }
@@ -37,7 +42,9 @@ type WizardStep = "INPUT" | "CURRICULUM" | "GENERATING";
 export const DeckList: React.FC<DeckListProps> = ({
   decks,
   onSelectDeck,
+  onSelectVirtualDeck,
   onAddDeck,
+  onUpdateDeck,
   onDeleteDeck,
   userId,
 }) => {
@@ -51,6 +58,10 @@ export const DeckList: React.FC<DeckListProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [progressLog, setProgressLog] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
+  const [viewFilter, setViewFilter] = useState<'all' | 'starred' | 'bookmarked'>('all');
+  const [draggedCategory, setDraggedCategory] = useState<string | null>(null);
+  const [categories, setCategories] = useState<string[]>([]);
 
   const resetModal = () => {
     setShowModal(false);
@@ -60,6 +71,44 @@ export const DeckList: React.FC<DeckListProps> = ({
     setSelectedSubtopics(new Set());
     setProgressLog([]);
     setError(null);
+  };
+
+  const handleToggleStar = async (deck: Deck, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const response = await fetch('/api/decks', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: deck.id, isStarred: !deck.isStarred }),
+      });
+      if (response.ok) {
+        onUpdateDeck({ ...deck, isStarred: !deck.isStarred });
+      }
+    } catch (err) {
+      console.error('Failed to toggle star:', err);
+    }
+  };
+
+  const handleReorderCategories = async (reorderedCategories: string[]) => {
+    // Update category order for all decks in each category
+    const updatePromises = reorderedCategories.flatMap((category, newOrder) => {
+      const decksInCategory = groupedDecks[category] || [];
+      return decksInCategory.map(deck => 
+        fetch('/api/decks', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: deck.id, categoryOrder: newOrder }),
+        })
+      );
+    });
+
+    try {
+      await Promise.all(updatePromises);
+      // Refresh decks to show new order
+      window.location.reload();
+    } catch (err) {
+      console.error('Failed to reorder categories:', err);
+    }
   };
 
   const handleAnalyzeTopic = async () => {
@@ -159,6 +208,38 @@ export const DeckList: React.FC<DeckListProps> = ({
     return acc;
   }, {} as Record<string, Deck[]>);
 
+  // Filter decks based on selected view
+  const filteredDecks = viewFilter === 'bookmarked' 
+    ? (() => {
+        // Create a virtual deck containing only bookmarked cards from all decks
+        const allBookmarkedCards = decks.flatMap(deck => 
+          deck.cards.filter(card => card.isBookmarked)
+        );
+        
+        if (allBookmarkedCards.length === 0) return [];
+        
+        return [{
+          id: 'bookmarked-collection',
+          title: 'Bookmarked Cards',
+          description: 'All your bookmarked cards for quick review',
+          parentTopic: 'Bookmarked',
+          cards: allBookmarkedCards,
+          userId: userId,
+          createdAt: Date.now(),
+        }];
+      })()
+    : decks.filter(deck => {
+        if (viewFilter === 'starred') return deck.isStarred;
+        return true;
+      });
+
+  const filteredGroupedDecks: Record<string, Deck[]> = filteredDecks.reduce((acc, deck) => {
+    const key = deck.parentTopic || "Uncategorized";
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(deck);
+    return acc;
+  }, {} as Record<string, Deck[]>);
+
   const getDeckStats = (deck: Deck) => {
     const now = Date.now();
     const newCards = deck.cards.filter((c) => c.status === "new").length;
@@ -169,35 +250,105 @@ export const DeckList: React.FC<DeckListProps> = ({
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Your Library</h1>
-          <p className="text-gray-500 mt-1">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mb-8">
+        {/* Header section */}
+        <div className="mb-4">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Your Library</h1>
+          <p className="text-gray-500 mt-1 text-sm sm:text-base">
             Manage your learning paths and decks
           </p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 transition-colors shadow-md font-medium"
-        >
-          <Plus size={20} />
-          <span>New Study Topic</span>
-        </button>
+        
+        {/* Controls section - stack on mobile, inline on larger screens */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          {/* Filter tabs */}
+          <div className="flex bg-gray-100 rounded-lg p-1 overflow-x-auto">
+            <button
+              onClick={() => setViewFilter('all')}
+              className={`px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors whitespace-nowrap ${
+                viewFilter === 'all'
+                  ? 'bg-white text-indigo-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              All Decks
+            </button>
+            <button
+              onClick={() => setViewFilter('starred')}
+              className={`px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                viewFilter === 'starred'
+                  ? 'bg-white text-indigo-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Star size={14} className="sm:w-4 sm:h-4" />
+              Starred
+            </button>
+            <button
+              onClick={() => setViewFilter('bookmarked')}
+              className={`px-3 sm:px-4 py-2 rounded-md text-xs sm:text-sm font-medium transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                viewFilter === 'bookmarked'
+                  ? 'bg-white text-indigo-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Bookmark size={14} className="text-green-500 sm:w-4 sm:h-4" fill={viewFilter === 'bookmarked' ? 'currentColor' : 'none'} />
+              Bookmarked
+            </button>
+          </div>
+          
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 sm:gap-3 sm:ml-auto">
+            <button
+              onClick={() => setShowCategoryManager(true)}
+              className="flex-1 sm:flex-none bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 sm:px-4 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors font-medium border border-gray-300 text-xs sm:text-sm"
+              title="Manage Categories"
+            >
+              <Settings size={16} className="sm:w-[18px] sm:h-[18px]" />
+              <span className="hidden sm:inline">Categories</span>
+            </button>
+            <button
+              onClick={() => setShowModal(true)}
+              className="flex-1 sm:flex-none bg-indigo-600 hover:bg-indigo-700 text-white px-4 sm:px-5 py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors shadow-md font-medium text-xs sm:text-sm"
+            >
+              <Plus size={18} className="sm:w-5 sm:h-5" />
+              <span className="hidden xs:inline">New Topic</span>
+              <span className="inline xs:hidden">New</span>
+            </button>
+          </div>
+        </div>
       </div>
 
-      {Object.keys(groupedDecks).length === 0 && (
+      {Object.keys(filteredGroupedDecks).length === 0 && (
         <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-gray-300">
           <Wand2 className="mx-auto h-12 w-12 text-gray-300 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900">No decks yet</h3>
+          <h3 className="text-lg font-medium text-gray-900">
+            {viewFilter === 'starred' 
+              ? 'No starred decks yet' 
+              : viewFilter === 'bookmarked'
+              ? 'No bookmarked cards yet'
+              : 'No decks yet'}
+          </h3>
           <p className="text-gray-500 mb-4">
-            Start by creating a new AI-powered study topic.
+            {viewFilter === 'starred'
+              ? 'Star your favorite decks to find them quickly.'
+              : viewFilter === 'bookmarked'
+              ? 'Bookmark cards during study sessions to review them later.'
+              : 'Start by creating a new AI-powered study topic.'}
           </p>
         </div>
       )}
 
       <div className="space-y-12">
-        {Object.entries(groupedDecks).map(([topic, topicDecks]) => (
+        {Object.entries(filteredGroupedDecks)
+          .sort(([_categoryA, decksA], [_categoryB, decksB]) => {
+            // Sort by categoryOrder of the first deck in each category
+            const orderA = decksA[0]?.categoryOrder ?? 9999;
+            const orderB = decksB[0]?.categoryOrder ?? 9999;
+            return orderA - orderB;
+          })
+          .map(([topic, topicDecks]) => (
           <div key={topic} className="animate-fade-in-up">
             <div className="flex items-center gap-2 mb-4 border-b border-gray-100 pb-2">
               <Layers className="text-gray-400" size={18} />
@@ -220,16 +371,29 @@ export const DeckList: React.FC<DeckListProps> = ({
                       <div className="p-2.5 bg-indigo-50 rounded-lg text-indigo-600">
                         <Brain size={22} />
                       </div>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeleteDeck(deck.id);
-                        }}
-                        className="text-gray-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-all"
-                        title="Delete Deck"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => handleToggleStar(deck, e)}
+                          className={`p-1.5 rounded-md transition-all ${
+                            deck.isStarred
+                              ? 'text-yellow-500 hover:text-yellow-600 hover:bg-yellow-50'
+                              : 'text-gray-300 hover:text-yellow-500 hover:bg-yellow-50'
+                          }`}
+                          title={deck.isStarred ? 'Unstar Deck' : 'Star Deck'}
+                        >
+                          <Star size={16} fill={deck.isStarred ? 'currentColor' : 'none'} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteDeck(deck.id);
+                          }}
+                          className="text-gray-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-md transition-all"
+                          title="Delete Deck"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
 
                     <h3 className="text-lg font-bold text-gray-900 mb-2 leading-tight">
@@ -261,7 +425,13 @@ export const DeckList: React.FC<DeckListProps> = ({
                         {deck.cards.length} Total Cards
                       </span>
                       <button
-                        onClick={() => onSelectDeck(deck.id)}
+                        onClick={() => {
+                          if (deck.id === 'bookmarked-collection' && onSelectVirtualDeck) {
+                            onSelectVirtualDeck(deck);
+                          } else {
+                            onSelectDeck(deck.id);
+                          }
+                        }}
                         className="text-indigo-600 text-sm font-bold hover:text-indigo-800 flex items-center gap-1 group-hover:gap-2 transition-all"
                       >
                         Study <Play size={14} fill="currentColor" />
@@ -451,6 +621,81 @@ export const DeckList: React.FC<DeckListProps> = ({
                   </button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Category Manager Modal */}
+      {showCategoryManager && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                <Layers size={24} className="text-indigo-600" />
+                Manage Categories
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">
+                Drag to reorder your learning categories
+              </p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6">
+              {(() => {
+                const sortedCategories = Object.keys(groupedDecks).sort((a, b) => {
+                  const orderA = groupedDecks[a][0]?.categoryOrder ?? 9999;
+                  const orderB = groupedDecks[b][0]?.categoryOrder ?? 9999;
+                  return orderA - orderB;
+                });
+                
+                return sortedCategories.map((category, index) => (
+                  <div
+                    key={category}
+                    draggable
+                    onDragStart={() => setDraggedCategory(category)}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      if (draggedCategory && draggedCategory !== category) {
+                        const draggedIndex = sortedCategories.indexOf(draggedCategory);
+                        const targetIndex = sortedCategories.indexOf(category);
+                        const newOrder = [...sortedCategories];
+                        newOrder.splice(draggedIndex, 1);
+                        newOrder.splice(targetIndex, 0, draggedCategory);
+                        setCategories(newOrder);
+                      }
+                    }}
+                    onDragEnd={() => {
+                      setDraggedCategory(null);
+                      if (categories.length > 0) {
+                        handleReorderCategories(categories);
+                      }
+                    }}
+                    className={`flex items-center gap-3 p-4 rounded-lg mb-3 border-2 transition-all cursor-move ${
+                      draggedCategory === category
+                        ? 'bg-indigo-100 border-indigo-400 opacity-50'
+                        : 'bg-gray-50 border-gray-200 hover:border-indigo-300 hover:bg-indigo-50'
+                    }`}
+                  >
+                    <GripVertical size={20} className="text-gray-400" />
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900">{category}</h3>
+                      <p className="text-sm text-gray-500">
+                        {groupedDecks[category].length} deck{groupedDecks[category].length !== 1 ? 's' : ''}
+                      </p>
+                    </div>
+                    <div className="text-gray-400 font-mono text-sm">#{index + 1}</div>
+                  </div>
+                ));
+              })()}
+            </div>
+
+            <div className="p-6 border-t border-gray-100 bg-gray-50">
+              <button
+                onClick={() => setShowCategoryManager(false)}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-3 rounded-xl font-semibold transition-colors"
+              >
+                Done
+              </button>
             </div>
           </div>
         </div>

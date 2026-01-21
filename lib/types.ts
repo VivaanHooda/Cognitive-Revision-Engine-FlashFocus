@@ -25,6 +25,9 @@ export interface FlashcardData {
   sourceChunks?: string[]; // Array of document_chunk IDs used to generate this card
   hint?: string; // Optional hint for the question
   cardDifficulty?: "easy" | "medium" | "hard"; // AI-assigned difficulty level
+  // Bookmarking
+  isBookmarked?: boolean; // Whether user bookmarked this card
+  bookmarkedAt?: number; // timestamp when bookmarked
 }
 
 export interface Deck {
@@ -35,6 +38,8 @@ export interface Deck {
   cards: FlashcardData[];
   lastStudied?: number;
   userId: string; // Owner of the deck
+  isStarred?: boolean; // Whether user starred/favorited this deck
+  categoryOrder?: number; // Order of category in user's list
 }
 
 export type StudyGrade = "again" | "hard" | "good" | "easy";

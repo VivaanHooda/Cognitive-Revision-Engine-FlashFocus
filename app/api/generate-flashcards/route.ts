@@ -321,7 +321,7 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         title: deckTitle,
         description: `Flashcards generated from document: ${document.title}`,
-        parent_topic: null,
+        parent_topic: "Document Flashcards",
         cards: [],
       };
       
