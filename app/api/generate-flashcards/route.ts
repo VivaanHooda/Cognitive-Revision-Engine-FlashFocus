@@ -187,7 +187,7 @@ STRICT REQUIREMENTS FOR REVISION:
 7. ✅ Questions should be self-contained (no "this" or "that" references)
 8. ✅ Mix difficulty: easy (recall), medium (application), hard (analysis)
 9. ✅ Add hints for medium/hard questions
-10. ✅ Answers should be 2-4 sentences
+10. ✅ Answers should be atleast more than 200 words
 
 BAD EXAMPLE (too broad):
 Q: "What are all the components of an operating system?"
@@ -197,8 +197,7 @@ GOOD EXAMPLE (focused):
 Q: "What is the primary purpose of ${context.topic}?"
 ✅ Directly targets the specific topic for revision
 
-The question should expect an answer of atleast 100 words.
-The answer should be as descriptive as possible with atleast more than 300 words.
+strictly no markdown
 
 OUTPUT FORMAT (strict JSON only, no markdown):
 {
