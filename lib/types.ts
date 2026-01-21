@@ -17,6 +17,14 @@ export interface FlashcardData {
   // FSRS fields
   stability?: number; // S
   difficulty?: number; // D
+  // Enhanced document-based fields
+  documentId?: string; // Links card to source PDF document
+  topicId?: string; // ID of concept node from topic tree
+  topicLabel?: string; // Human-readable topic name
+  originalQuestion?: string; // Base question for rephrasing variants
+  sourceChunks?: string[]; // Array of document_chunk IDs used to generate this card
+  hint?: string; // Optional hint for the question
+  cardDifficulty?: "easy" | "medium" | "hard"; // AI-assigned difficulty level
 }
 
 export interface Deck {
@@ -47,6 +55,7 @@ export enum AppView {
   STATS = "STATS",
   TIMELINE = "TIMELINE",
   DOCUMENTS = "DOCUMENTS",
+  DOCUMENT_STUDY = "DOCUMENT_STUDY",
 }
 
 // ============================================================================

@@ -288,7 +288,7 @@ export async function POST(request: NextRequest) {
       .from("documents")
       .select("id, user_id, title")
       .eq("id", documentId)
-      .single();
+      .single() as { data: { id: string; user_id: string; title: string } | null; error: any };
     
     if (docError || !document || document.user_id !== user.id) {
       return NextResponse.json({ error: "Document not found" }, { status: 404 });
@@ -304,15 +304,15 @@ export async function POST(request: NextRequest) {
     const embeddingResult = await embedWithRetry(searchQuery);
     const queryEmbedding = embeddingResult.embedding;
     
-    const { data: chunks, error: searchError } = await supabaseAdmin.rpc(
+    const { data: chunks, error: searchError } = await (supabaseAdmin.rpc as any)(
       "match_document_chunks",
       {
         query_embedding: queryEmbedding,
-        match_threshold: 0.5, // Lower threshold for more results
-        match_count: 10, // Get more chunks for better context
+        match_threshold: 0.3, // Lowered threshold for broader matching
+        match_count: 10,
         filter_document_id: documentId,
       }
-    );
+    ) as { data: Array<{ id: string; content: string; similarity: number }> | null; error: any };
     
     if (searchError || !chunks || chunks.length === 0) {
       console.error("[API] Semantic search error:", searchError);
@@ -360,7 +360,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // 8. Validate and return
+    // 8. Validate generated flashcards
     if (!result.flashcards || result.flashcards.length === 0) {
       return NextResponse.json(
         { error: "No flashcards generated" },
@@ -368,17 +368,62 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    // 9. Save flashcards to database
+    const cardsToInsert = result.flashcards.map(card => ({
+      user_id: user.id,
+      document_id: documentId,
+      topic_id: topicId,
+      topic_label: topicLabel,
+      front: card.question,
+      back: card.answer,
+      original_question: card.question, // Store baseline for rephrasing
+      hint: card.hint,
+      card_difficulty: card.difficulty,
+      source_chunks: chunks.map(c => c.id), // Track which chunks generated this card
+      status: 'new',
+      due_date: new Date().toISOString(), // Available for review immediately
+      stability: 0,
+      difficulty: 0,
+      elapsed_days: 0,
+      scheduled_days: 0,
+      reps: 0,
+      lapses: 0,
+      state: 0,
+      last_reviewed: null,
+      review_count: 0,
+    }));
+    
+    const { data: savedCards, error: insertError } = await supabaseAdmin
+      .from("cards")
+      .insert(cardsToInsert as any)
+      .select("id, front, back, hint, card_difficulty, topic_label") as { data: Array<{ id: string; front: string; back: string; hint: string | null; card_difficulty: string; topic_label: string }> | null; error: any };
+    
+    if (insertError || !savedCards) {
+      console.error("[API] Failed to save cards:", insertError);
+      return NextResponse.json(
+        { 
+          error: "Failed to save flashcards to database",
+          details: insertError?.message || "Unknown error",
+        },
+        { status: 500 }
+      );
+    }
+    
+    // 10. Return saved cards with IDs
     return NextResponse.json({
       success: true,
       topic: topicLabel,
-      flashcards: result.flashcards.map(card => ({
-        front: card.question,
-        back: card.answer,
-        difficulty: card.difficulty,
+      flashcards: savedCards.map((card: any) => ({
+        id: card.id,
+        front: card.front,
+        back: card.back,
+        difficulty: card.card_difficulty,
         hint: card.hint,
+        topic: card.topic_label,
       })),
       documentTitle: document.title,
       sourceChunks: chunks.length,
+      cardsSaved: savedCards.length,
     });
     
   } catch (error) {

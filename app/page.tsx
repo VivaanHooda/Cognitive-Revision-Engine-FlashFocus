@@ -8,6 +8,7 @@ import { Statistics } from "@/components/Statistics";
 import { Timeline } from "@/components/Timeline";
 import { Auth } from "@/components/Auth";
 import { DocumentsView } from "@/components/DocumentsView";
+import DocumentStudyView from "@/components/DocumentStudyView";
 import { db } from "@/lib/db";
 import * as authClient from "@/lib/auth.client";
 import { createClient } from "@/lib/supabase.client";
@@ -27,6 +28,8 @@ export default function Home() {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [activeDeckId, setActiveDeckId] = useState<string | null>(null);
   const [isDataLoading, setIsDataLoading] = useState(false);
+  const [studyDocumentId, setStudyDocumentId] = useState<string | null>(null);
+  const [studyDocumentTitle, setStudyDocumentTitle] = useState<string>("");
 
   // Check for existing JWT session on mount (server-backed)
   useEffect(() => {
@@ -270,7 +273,22 @@ export default function Home() {
             )}
 
             {view === AppView.DOCUMENTS && (
-              <DocumentsView userId={currentUser?.id || ""} />
+              <DocumentsView 
+                userId={currentUser?.id || ""}
+                onStudyDocument={(docId: string, docTitle: string) => {
+                  setStudyDocumentId(docId);
+                  setStudyDocumentTitle(docTitle);
+                  setView(AppView.DOCUMENT_STUDY);
+                }}
+              />
+            )}
+
+            {view === AppView.DOCUMENT_STUDY && studyDocumentId && (
+              <DocumentStudyView
+                documentId={studyDocumentId}
+                documentTitle={studyDocumentTitle}
+                onBack={() => setView(AppView.DOCUMENTS)}
+              />
             )}
 
             {view === AppView.STUDY && activeDeck && (

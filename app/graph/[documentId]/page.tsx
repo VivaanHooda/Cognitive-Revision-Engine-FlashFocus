@@ -289,6 +289,7 @@ export default function GraphPage() {
         },
         body: JSON.stringify({
           documentId: documentId,
+          topicId: node.id,
           topicLabel: node.label,
           topicDescription: node.description || node.label,
           cardCount: 8
@@ -302,6 +303,9 @@ export default function GraphPage() {
         setFlashcards(data.flashcards);
         setCurrentCardIndex(0);
         setIsFlipped(false);
+        
+        // Show success message with card count
+        console.log(`✅ Generated and saved ${data.cardsSaved || data.flashcards.length} flashcards for "${node.label}"`);
       } else {
         alert('⚠️ No flashcards generated. Try selecting a different topic.');
       }

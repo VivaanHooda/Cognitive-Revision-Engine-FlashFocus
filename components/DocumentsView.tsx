@@ -62,6 +62,7 @@ interface Document {
 
 interface DocumentsViewProps {
   userId: string;
+  onStudyDocument?: (documentId: string, documentTitle: string) => void;
 }
 
 // ============================================================================
@@ -952,6 +953,7 @@ interface DocumentDetailModalProps {
   onClose: () => void;
   onGenerateTree: (docId: string) => Promise<void>;
   isGenerating: boolean;
+  onStudyDocument?: (documentId: string, documentTitle: string) => void;
 }
 
 const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
@@ -959,6 +961,7 @@ const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
   onClose,
   onGenerateTree,
   isGenerating,
+  onStudyDocument,
 }) => {
   if (!document) return null;
 
@@ -1015,15 +1018,29 @@ const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
               <p className="text-gray-600 mb-6 max-w-sm mx-auto">
                 Interactive concept map with {document.topic_tree && 'nodes' in document.topic_tree ? document.topic_tree.nodes.length : '0'} concepts and their connections
               </p>
-              <a
-                href={`/graph/${document.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-6 py-3 rounded-xl font-medium transition-all shadow-lg shadow-indigo-200"
-              >
-                <FolderTree size={20} />
-                Open Full Screen Graph
-              </a>
+              <div className="flex gap-3 justify-center">
+                <a
+                  href={`/graph/${document.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-6 py-3 rounded-xl font-medium transition-all shadow-lg shadow-indigo-200"
+                >
+                  <FolderTree size={20} />
+                  Open Full Screen Graph
+                </a>
+                {onStudyDocument && (
+                  <button
+                    onClick={() => {
+                      onStudyDocument(document.id, document.title);
+                      onClose();
+                    }}
+                    className="inline-flex items-center gap-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white px-6 py-3 rounded-xl font-medium transition-all shadow-lg shadow-green-200"
+                  >
+                    <BookOpen size={20} />
+                    Study Cards
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <div className="text-center py-12">
@@ -1086,7 +1103,7 @@ const DocumentDetailModal: React.FC<DocumentDetailModalProps> = ({
 // Main Documents View Component
 // ============================================================================
 
-export const DocumentsView: React.FC<DocumentsViewProps> = ({ userId }) => {
+export const DocumentsView: React.FC<DocumentsViewProps> = ({ userId, onStudyDocument }) => {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -1380,6 +1397,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ userId }) => {
         onClose={() => setSelectedDocument(null)}
         onGenerateTree={handleGenerateTree}
         isGenerating={isGeneratingTree}
+        onStudyDocument={onStudyDocument}
       />
     </div>
   );
