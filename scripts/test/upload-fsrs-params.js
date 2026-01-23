@@ -2,7 +2,7 @@
 // Usage: node ./scripts/upload-fsrs-params.js <path-to-json> [user_id]
 
 const fs = require("fs");
-const { supabaseAdmin } = require("../lib/supabase.server");
+const { supabaseAdmin } = require("../../lib/supabase.server");
 
 async function main() {
   const args = process.argv.slice(2);

@@ -4,7 +4,7 @@
 
 require("ts-node").register();
 const assert = require("assert");
-const mod = require("../lib/srs.server");
+const mod = require("../../lib/srs.server");
 const { calculateNextReview, predictInterval } = mod;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
